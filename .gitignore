@@ -1,0 +1,17 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment files
+.env
+
+# IDE/editor
+.idea/
+.vscode/
