@@ -3,5 +3,6 @@ uvicorn[standard]
 sqlalchemy
 alembic
 pymysql
+cryptography
 pydantic-settings
 email-validator

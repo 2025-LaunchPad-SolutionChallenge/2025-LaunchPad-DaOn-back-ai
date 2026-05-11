@@ -53,13 +53,31 @@ class SmokeInhalation(str, Enum):
     MILD = "MILD"
     SEVERE = "SEVERE"
 
+# 외출 가능 시간 Enum
+class AvailableTime(str, Enum):
+    UNDER_ONE_HOUR = "UNDER_ONE_HOUR"         
+    ONE_TO_THREE_HOURS = "ONE_TO_THREE_HOURS" 
+    HALF_DAY = "HALF_DAY"                     
+    ALL_DAY = "ALL_DAY"                      
+
 # --- Request / Response Models ---
 class CamelModel(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
+class UserCondition(CamelModel):
+    can_go_out: bool
+    available_time: AvailableTime
+
+class ContextRequest(CamelModel):
+    user_disaster_id: int
+    user_condition: UserCondition
+
+class ContextResponse(CamelModel):
+    message: str
+
 class OnboardingRequest(CamelModel):
     disaster_id: int
-    disaster_type: DisasterType  # 프론트에서 어떤 재난인지 명시
+    disaster_type: DisasterType 
     safety_status: Optional[SafetyStatus] = None
     residence_status: ResidenceStatus
     injury_level: InjuryLevel

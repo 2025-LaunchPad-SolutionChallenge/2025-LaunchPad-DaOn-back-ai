@@ -76,3 +76,15 @@ def process_onboarding(db: Session, req: schemas.OnboardingRequest) -> schemas.O
         impact_id=impact.impact_id,
         message="피해 상황이 등록되었습니다"
     )
+
+# 상황 입력 서비스 로직
+def process_checklist_context(db: Session, req: schemas.ContextRequest):
+    updated_impact = crud.update_disaster_context(db, req)
+    
+    if not updated_impact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="해당 userDisasterId에 대한 온보딩 정보를 찾을 수 없습니다."
+        )
+        
+    return schemas.ContextResponse(message="상황 입력 완료")

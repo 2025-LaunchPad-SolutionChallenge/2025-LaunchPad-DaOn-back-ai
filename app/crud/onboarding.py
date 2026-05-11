@@ -34,3 +34,19 @@ def create_fire_impact(db: Session, data: dict):
     db_fire = models.FireImpact(**data)
     db.add(db_fire)
     db.commit()
+
+# 상황 데이터 입력 후 업데이트 함수
+def update_disaster_context(db: Session, req: schemas.ContextRequest) -> models.DisasterImpact:
+    db_impact = db.query(models.DisasterImpact).filter(
+        models.DisasterImpact.user__disaster_id == req.user_disaster_id
+    ).first()
+    
+    if not db_impact:
+        return None 
+        
+    db_impact.can_go_out = req.user_condition.can_go_out
+    db_impact.available_time = req.user_condition.available_time.value 
+    
+    db.commit()
+    db.refresh(db_impact)
+    return db_impact

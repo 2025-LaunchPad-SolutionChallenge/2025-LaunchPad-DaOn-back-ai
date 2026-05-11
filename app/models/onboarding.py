@@ -12,6 +12,11 @@ class DisasterImpact(Base):
     safty_status = Column(String(50), nullable=True) # DB 오타 유지
     residence_status = Column(String(50), nullable=False)
     injury_level = Column(String(50), nullable=False)
+
+    # 상황 입력 데이터 컬럼 추가 
+    can_go_out = Column(Boolean, nullable=True)
+    available_time = Column(String, nullable=True)
+    
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
