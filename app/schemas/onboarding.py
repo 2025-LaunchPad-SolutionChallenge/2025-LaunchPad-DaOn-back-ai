@@ -1,31 +1,77 @@
-from pydantic import BaseModel
-from typing import Optional, Literal
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+from typing import List, Optional
+from enum import Enum
 
+# --- 공통 Enums ---
+class DisasterType(str, Enum):
+    FLOOD = "FLOOD"
+    TYPHOON = "TYPHOON"
+    EARTHQUAKE = "EARTHQUAKE"
+    FIRE = "FIRE"
 
-# ENUM
-SafetyStatus = Literal["SAFE", "MINOR", "DAMAGED", "EMERGENCY"]
-ResidenceStatus = Literal["LIVABLE", "PARTIAL_DAMAGE", "UNLIVABLE"]
-InjuryLevel = Literal["NONE", "MINOR", "SEVERE"]
+class SafetyStatus(str, Enum):
+    SAFE = "SAFE"
+    MINOR = "MINOR"
+    DAMAGED = "DAMAGED"
+    EMERGENCY = "EMERGENCY"
 
+class ResidenceStatus(str, Enum):
+    LIVABLE = "LIVABLE"
+    PARTIAL_DAMAGE = "PARTIAL_DAMAGE"
+    UNLIVABLE = "UNLIVABLE"
 
-class FloodDetail(BaseModel):
-    floodLevel: Literal["FIRST_FLOOR", "SECOND_FLOOR", "FULL"]
-    waterDrainStatus: Literal["DRAINED", "PARTIAL_DRAINED", "NOT_DRAINED"]
-    damageHouse: bool
-    damageVehicle: bool
-    electricProblem: bool
-    waterProblem: bool
+class InjuryLevel(str, Enum):
+    NONE = "NONE"
+    MINOR = "MINOR"
+    SEVERE = "SEVERE"
 
+# --- 재난 특화 Enums ---
+class FloodLevel(str, Enum):
+    NONE = "NONE"
+    FRONT_YARD = "FRONT_YARD"
+    FIRST_FLOOR = "FIRST_FLOOR"
+    INSIDE_HOME = "INSIDE_HOME"
 
-class OnboardingRequest(BaseModel):
-    disasterId: int
-    safetyStatus: SafetyStatus
-    residenceStatus: ResidenceStatus
-    injuryLevel: InjuryLevel
+class WaterDrainStatus(str, Enum):
+    STILL_PRESENT = "STILL_PRESENT"
+    PARTIAL_DRAINED = "PARTIAL_DRAINED"
+    MOSTLY_DRAINED = "MOSTLY_DRAINED"
 
-    floodDetail: Optional[FloodDetail] = None
+class AftershockFeeling(str, Enum):
+    NONE = "NONE"
+    OCCASIONAL = "OCCASIONAL"
+    CONTINUOUS = "CONTINUOUS"
 
+class FireDamageScope(str, Enum):
+    SMOKE_ONLY = "SMOKE_ONLY"
+    PARTIAL_LOSS = "PARTIAL_LOSS"
+    TOTAL_LOSS = "TOTAL_LOSS"
 
-class OnboardingResponse(BaseModel):
-    impactId: int
+class SmokeInhalation(str, Enum):
+    NONE = "NONE"
+    MILD = "MILD"
+    SEVERE = "SEVERE"
+
+# --- Request / Response Models ---
+class CamelModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+class OnboardingRequest(CamelModel):
+    disaster_id: int
+    disaster_type: DisasterType  # 프론트에서 어떤 재난인지 명시
+    safety_status: Optional[SafetyStatus] = None
+    residence_status: ResidenceStatus
+    injury_level: InjuryLevel
+    damages: List[bool]  # 프론트에서 보내는 피해 여부 배열
+    
+    # 재난별 특화 필드 (해당하지 않는 재난일 때는 안 보내도 됨)
+    flood_level: Optional[FloodLevel] = None
+    water_drain_status: Optional[WaterDrainStatus] = None
+    aftershock_feeling: Optional[AftershockFeeling] = None
+    fire_damage_scope: Optional[FireDamageScope] = None
+    smoke_inhalation: Optional[SmokeInhalation] = None
+
+class OnboardingResponse(CamelModel):
+    impact_id: int
     message: str
