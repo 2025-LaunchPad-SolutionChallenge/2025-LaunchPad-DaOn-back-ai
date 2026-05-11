@@ -15,6 +15,14 @@ class DisasterImpact(Base):
     created_at = Column(DateTime, default=func.now(), nullable=False)
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
+class DisasterTypeModel(Base):
+    __tablename__ = "disaster_types"
+    
+    disaster_type_id = Column(Integer, primary_key=True, index=True)
+    disaster_code = Column(String, nullable=False) 
+    disaser_name = Column(String, nullable=True)   
+    description = Column(String, nullable=True)
+
 class FloodImpact(Base):
     __tablename__ = "flood_impacts"
     
