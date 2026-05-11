@@ -45,6 +45,7 @@ htmlcov/
 !.env.example
 
 # Firebase / cloud key material often referenced by FIREBASE_CREDENTIALS_PATH
+daon-launchpad-firebase-adminsdk-fbsvc-27e742c90d.json
 *-firebase-adminsdk-*.json
 serviceAccount*.json
 

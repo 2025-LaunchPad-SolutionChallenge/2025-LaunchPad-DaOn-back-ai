@@ -34,7 +34,7 @@ class UserModel(TimestampMixin, Base):
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     nickname: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    birth_date: Mapped[date] = mapped_column(Date, nullable=False)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     profile_image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     firebase_uid: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     residence_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

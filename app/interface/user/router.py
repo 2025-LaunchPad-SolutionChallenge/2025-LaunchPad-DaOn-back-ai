@@ -1,4 +1,12 @@
-from fastapi import APIRouter
+from typing import Any
 
-# Phase 2: 도메인 라우터 연결 시 여기에 엔드포인트 추가
-router = APIRouter()
+from fastapi import APIRouter, Depends
+
+from app.dependencies.auth import get_current_user
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me")
+async def get_me(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    return current_user
