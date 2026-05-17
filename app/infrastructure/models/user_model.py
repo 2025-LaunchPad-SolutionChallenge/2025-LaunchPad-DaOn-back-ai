@@ -13,6 +13,7 @@ from app.infrastructure.models.base import TimestampMixin
 if TYPE_CHECKING:
     from app.infrastructure.models.disaster_model import UserDisasterModel
     from app.infrastructure.models.community_model import CommunityProfileModel
+    from app.infrastructure.models.refresh_token_session_model import RefreshTokenSessionModel
 
 
 # [수정] varification → verification
@@ -51,6 +52,9 @@ class UserModel(TimestampMixin, Base):
     disasters: Mapped[List["UserDisasterModel"]] = relationship(back_populates="user")
     community_profile: Mapped[Optional["CommunityProfileModel"]] = relationship(
         back_populates="user", uselist=False, cascade="all, delete-orphan"
+    )
+    refresh_sessions: Mapped[List["RefreshTokenSessionModel"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
 
 

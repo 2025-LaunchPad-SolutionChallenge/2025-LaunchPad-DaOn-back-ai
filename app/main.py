@@ -11,7 +11,7 @@ from app.config import settings
 from app.firebase import init_firebase
 
 # ── 라우터 import (도메인별로 추가) ──────────────
-# from app.interface.auth.router import router as auth_router
+from app.interface.auth.router import router as auth_router
 from app.interface.user.router import router as user_router
 # from app.interface.disaster.router import router as disaster_router
 # from app.interface.home.router import router as home_router
@@ -44,10 +44,11 @@ app.add_middleware(
 
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
+    api_code: str | int = exc.error_key if exc.error_key is not None else exc.code
     return JSONResponse(
         status_code=exc.status_code,
         content={
-            "code": exc.code,
+            "code": api_code,
             "message": exc.message,
             "data": None,
         },
@@ -59,6 +60,47 @@ async def validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
+    path = request.url.path
+    if path.startswith("/api/v1/auth"):
+        errors = exc.errors()
+        loc = [str(x) for x in errors[0].get("loc", ())] if errors else []
+
+        if "refreshToken" in loc:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "code": "MISSING_REFRESH_TOKEN",
+                    "message": "refreshToken이 필요합니다.",
+                    "data": None,
+                },
+            )
+
+        if path.endswith("/withdraw") and "firebaseToken" in loc:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "code": "VALIDATION_ERROR",
+                    "message": "firebaseToken이 필요합니다.",
+                    "data": None,
+                },
+            )
+
+        if path.endswith("/login"):
+            msg = "firebaseToken이 필요합니다."
+        elif errors:
+            msg = errors[0].get("msg", "필수 필드 누락 또는 날짜 형식 오류입니다.")
+        else:
+            msg = "입력 값이 올바르지 않습니다."
+
+        return JSONResponse(
+            status_code=400,
+            content={
+                "code": "VALIDATION_ERROR",
+                "message": str(msg),
+                "data": None,
+            },
+        )
+
     errors = exc.errors()
     message = (
         errors[0].get("msg", "입력 값이 올바르지 않습니다.")
@@ -107,7 +149,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-# app.include_router(auth_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(user_router, prefix="/api/v1")
 # app.include_router(disaster_router, prefix="/api/v1")
 # app.include_router(home_router, prefix="/api/v1")

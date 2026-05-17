@@ -42,6 +42,7 @@ from app.infrastructure.models.recovery_model import (
     RecoveryOutputModel,
     RecoveryStageMasterModel,
 )
+from app.infrastructure.models.refresh_token_session_model import RefreshTokenSessionModel
 
 # ── Checklist 도메인 ─────────────────────────────────────────
 from app.infrastructure.models.checklist_model import (
@@ -65,6 +66,7 @@ __all__ = [
     "UserAuthProviderModel",
     "UserResidenceModel",
     "UserSettingModel",
+    "RefreshTokenSessionModel",
     # ── User enums ───────────────────────────────────────────
     "VerificationStatus",
     "ProviderType",
