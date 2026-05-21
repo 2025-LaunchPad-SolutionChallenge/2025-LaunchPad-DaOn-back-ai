@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from contextlib import contextmanager
+from collections.abc import Generator, Sequence
+from contextlib import ExitStack, contextmanager
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from starlette.testclient import TestClient
@@ -41,16 +43,21 @@ async def _fake_verify_firebase_id_token(token: str) -> dict:
 
 
 @contextmanager
-def _test_client():
+def _test_client(
+    extra_patches: Sequence[Any] | None = None,
+) -> Generator[TestClient, None, None]:
     with patch("app.main.init_firebase", lambda: None):
         with patch(
             "app.domain.auth.service.verify_firebase_id_token",
             side_effect=_fake_verify_firebase_id_token,
         ):
-            from app.main import app
+            with ExitStack() as stack:
+                for p in extra_patches or []:
+                    stack.enter_context(p)
+                from app.main import app
 
-            with TestClient(app) as client:
-                yield client
+                with TestClient(app) as client:
+                    yield client
 
 
 def test_register_login_refresh_me_logout_revoked_chain() -> None:
@@ -140,39 +147,97 @@ def test_withdraw_deletes_user_and_blocks_login() -> None:
     suffix = secrets.token_hex(4)
     reg_tok = f"firebase-ok-w-reg|{suffix}"
     reauth_tok = f"firebase-ok-w-reauth|{suffix}"
-    with patch("app.main.init_firebase", lambda: None):
-        with patch(
-            "app.domain.auth.service.verify_firebase_id_token",
-            side_effect=_fake_verify_firebase_id_token,
-        ):
-            with patch("app.domain.auth.service.delete_firebase_user", mock_delete):
-                from app.main import app
+    with _test_client(
+        [patch("app.domain.auth.service.delete_firebase_user", mock_delete)],
+    ) as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": reg_tok,
+                "name": "탈퇴테스트",
+                "birthDate": "1990-01-01",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
 
-                with TestClient(app) as client:
-                    reg = client.post(
-                        "/api/v1/auth/register",
-                        json={
-                            "firebaseToken": reg_tok,
-                            "name": "탈퇴테스트",
-                            "birthDate": "1990-01-01",
-                        },
-                    )
-                    assert reg.status_code == 200, reg.text
-                    access = reg.json()["accessToken"]
+        wd = client.request(
+            "DELETE",
+            "/api/v1/auth/withdraw",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"firebaseToken": reauth_tok},
+        )
+        assert wd.status_code == 200, wd.text
+        assert wd.json()["message"] == "계정이 삭제되었습니다."
+        mock_delete.assert_awaited_once()
 
-                    wd = client.request(
-                        "DELETE",
-                        "/api/v1/auth/withdraw",
-                        headers={"Authorization": f"Bearer {access}"},
-                        json={"firebaseToken": reauth_tok},
-                    )
-                    assert wd.status_code == 200, wd.text
-                    assert wd.json()["message"] == "계정이 삭제되었습니다."
-                    mock_delete.assert_awaited_once()
+        again = client.post(
+            "/api/v1/auth/login",
+            json={"firebaseToken": reg_tok},
+        )
+        assert again.status_code == 404
+        assert again.json().get("code") == "USER_NOT_FOUND"
 
-                    again = client.post(
-                        "/api/v1/auth/login",
-                        json={"firebaseToken": reg_tok},
-                    )
-                    assert again.status_code == 404
-                    assert again.json().get("code") == "USER_NOT_FOUND"
+
+def test_register_duplicate_uid_409() -> None:
+    """같은 Firebase UID로 두 번 가입 시도 → 409."""
+    token = "firebase-ok-dup-" + secrets.token_hex(6)
+    with _test_client() as client:
+        first = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "첫가입",
+                "birthDate": "1995-01-01",
+            },
+        )
+        assert first.status_code == 200, first.text
+
+        second = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "둘째시도",
+                "birthDate": "1996-06-06",
+            },
+        )
+        assert second.status_code == 409, second.text
+        assert second.json().get("code") == "DUPLICATE_FIREBASE_USER"
+
+
+def test_register_missing_fields_400() -> None:
+    """필수 필드 누락 → 400 VALIDATION_ERROR."""
+    with _test_client() as client:
+        r = client.post("/api/v1/auth/register", json={})
+        assert r.status_code == 400, r.text
+        assert r.json().get("code") == "VALIDATION_ERROR"
+
+
+def test_refresh_with_old_token_after_rotate() -> None:
+    """refresh로 새 토큰 발급 후, 이전 refresh token 재사용 → 401 REVOKED."""
+    token = "firebase-ok-rotate-" + secrets.token_hex(6)
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "회전테스트",
+                "birthDate": "1992-02-02",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        old_refresh = reg.json()["refreshToken"]
+
+        ref = client.post(
+            "/api/v1/auth/refresh",
+            json={"refreshToken": old_refresh},
+        )
+        assert ref.status_code == 200, ref.text
+        assert ref.json()["refreshToken"] != old_refresh
+
+        stale = client.post(
+            "/api/v1/auth/refresh",
+            json={"refreshToken": old_refresh},
+        )
+        assert stale.status_code == 401, stale.text
+        assert stale.json().get("code") == "REVOKED_REFRESH_TOKEN"
