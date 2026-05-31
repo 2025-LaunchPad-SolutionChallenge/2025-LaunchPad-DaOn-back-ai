@@ -35,11 +35,21 @@ class SqlAlchemyUserRepository(UserRepository):
         row = result.scalar_one_or_none()
         return _to_domain(row) if row else None
 
-    async def create(self, *, firebase_uid: str, name: str, birth_date: date) -> User:
+    async def create(
+        self,
+        *,
+        firebase_uid: str,
+        name: str | None,
+        birth_date: date | None,
+        email: str | None,
+        profile_image_url: str | None,
+    ) -> User:
         model = UserModel(
             firebase_uid=firebase_uid,
             name=name,
+            email=email,
             birth_date=birth_date,
+            profile_image_url=profile_image_url,
         )
         self._session.add(model)
         await self._session.flush()

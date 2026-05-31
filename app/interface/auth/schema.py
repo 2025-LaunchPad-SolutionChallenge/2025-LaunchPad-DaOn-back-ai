@@ -5,8 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 _EX_REGISTER = {
     "firebaseToken": "eyJhbGci...",
-    "name": "홍길동",
-    "birthDate": "1995-03-15",
 }
 
 
@@ -17,8 +15,8 @@ class RegisterRequest(BaseModel):
     )
 
     firebaseToken: str = Field(..., min_length=1)
-    name: str = Field(..., min_length=1)
-    birthDate: date
+    name: str | None = Field(default=None, min_length=1)
+    birthDate: date | None = None
 
 
 class LoginRequest(BaseModel):
@@ -55,15 +53,6 @@ class RefreshRequest(BaseModel):
 class RefreshResponse(BaseModel):
     accessToken: str
     refreshToken: str
-
-
-class WithdrawRequest(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        json_schema_extra={"examples": [{"firebaseToken": "eyJhbGci..."}]},
-    )
-
-    firebaseToken: str = Field(..., min_length=1)
 
 
 class MessageResponse(BaseModel):

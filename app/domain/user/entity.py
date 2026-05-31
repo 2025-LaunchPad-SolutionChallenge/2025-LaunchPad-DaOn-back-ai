@@ -8,7 +8,7 @@ class User:
 
     id: int
     firebase_uid: str
-    name: str
+    name: str | None
     nickname: str | None
     profile_image_url: str | None
     birth_date: date | None

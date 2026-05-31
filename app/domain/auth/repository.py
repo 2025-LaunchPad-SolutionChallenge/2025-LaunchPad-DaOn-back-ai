@@ -20,3 +20,6 @@ class AuthRepository(ABC):
 
     @abstractmethod
     async def revoke_refresh_session(self, jti: str) -> None: ...
+
+    @abstractmethod
+    async def revoke_all_refresh_sessions_by_user(self, user_id: int) -> None: ...

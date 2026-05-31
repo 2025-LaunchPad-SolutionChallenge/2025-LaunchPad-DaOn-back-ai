@@ -14,7 +14,15 @@ class UserRepository(ABC):
     async def get_by_firebase_uid(self, firebase_uid: str) -> User | None: ...
 
     @abstractmethod
-    async def create(self, *, firebase_uid: str, name: str, birth_date: date) -> User: ...
+    async def create(
+        self,
+        *,
+        firebase_uid: str,
+        name: str | None,
+        birth_date: date | None,
+        email: str | None,
+        profile_image_url: str | None,
+    ) -> User: ...
 
     @abstractmethod
     async def delete(self, user_id: int) -> None: ...

@@ -59,3 +59,15 @@ class SqlAlchemyAuthRepository(AuthRepository):
             .values(revoked_at=now),
         )
         await self._session.flush()
+
+    async def revoke_all_refresh_sessions_by_user(self, user_id: int) -> None:
+        now = _utc_now_naive()
+        await self._session.execute(
+            update(RefreshTokenSessionModel)
+            .where(
+                RefreshTokenSessionModel.user_id == user_id,
+                RefreshTokenSessionModel.revoked_at.is_(None),
+            )
+            .values(revoked_at=now),
+        )
+        await self._session.flush()

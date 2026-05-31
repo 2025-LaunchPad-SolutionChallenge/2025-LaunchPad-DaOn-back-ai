@@ -146,7 +146,6 @@ def test_withdraw_deletes_user_and_blocks_login() -> None:
     mock_delete = AsyncMock(return_value=None)
     suffix = secrets.token_hex(4)
     reg_tok = f"firebase-ok-w-reg|{suffix}"
-    reauth_tok = f"firebase-ok-w-reauth|{suffix}"
     with _test_client(
         [patch("app.domain.auth.service.delete_firebase_user", mock_delete)],
     ) as client:
@@ -160,16 +159,24 @@ def test_withdraw_deletes_user_and_blocks_login() -> None:
         )
         assert reg.status_code == 200, reg.text
         access = reg.json()["accessToken"]
+        refresh = reg.json()["refreshToken"]
 
         wd = client.request(
             "DELETE",
             "/api/v1/auth/withdraw",
             headers={"Authorization": f"Bearer {access}"},
-            json={"firebaseToken": reauth_tok},
         )
         assert wd.status_code == 200, wd.text
         assert wd.json()["message"] == "계정이 삭제되었습니다."
         mock_delete.assert_awaited_once()
+
+        # 탈퇴 시 해당 유저의 refresh 세션도 서버에서 무효화된다.
+        revoked = client.post(
+            "/api/v1/auth/refresh",
+            json={"refreshToken": refresh},
+        )
+        assert revoked.status_code == 401
+        assert revoked.json().get("code") == "REVOKED_REFRESH_TOKEN"
 
         again = client.post(
             "/api/v1/auth/login",

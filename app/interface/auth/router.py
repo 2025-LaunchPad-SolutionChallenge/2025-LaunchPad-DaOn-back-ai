@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Depends
 
 from app.common.dependencies import get_auth_service, get_current_access_payload
 from app.domain.auth.service import AuthService
@@ -10,7 +10,6 @@ from app.interface.auth.schema import (
     RefreshResponse,
     RegisterRequest,
     RegisteredUserOut,
-    WithdrawRequest,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -81,14 +80,12 @@ async def logout(
 
 @router.delete("/withdraw", response_model=MessageResponse)
 async def withdraw(
-    req: WithdrawRequest = Body(...),
     auth_service: AuthService = Depends(get_auth_service),
     payload: dict = Depends(get_current_access_payload),
 ) -> MessageResponse:
     access_uid = int(payload["sub"])
     access_fb = str(payload["firebase_uid"])
     await auth_service.withdraw_account(
-        firebase_token=req.firebaseToken,
         access_user_id=access_uid,
         access_firebase_uid=access_fb,
     )

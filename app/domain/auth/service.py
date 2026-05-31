@@ -38,8 +38,8 @@ class AuthService:
         self,
         *,
         firebase_token: str,
-        name: str,
-        birth_date: date,
+        name: str | None,
+        birth_date: date | None,
     ) -> AuthTokensBundle:
         try:
             decoded = await verify_firebase_id_token(firebase_token)
@@ -52,6 +52,13 @@ class AuthService:
             )
 
         firebase_uid = decoded["uid"]
+        resolved_name = (name or decoded.get("name") or decoded.get("display_name") or None)
+        if isinstance(resolved_name, str):
+            resolved_name = resolved_name.strip() or None
+        else:
+            resolved_name = None
+        resolved_email = decoded.get("email")
+        resolved_profile_image = decoded.get("picture")
 
         existing = await self._users.get_by_firebase_uid(firebase_uid)
         if existing is not None:
@@ -65,8 +72,10 @@ class AuthService:
         try:
             user = await self._users.create(
                 firebase_uid=firebase_uid,
-                name=name.strip(),
+                name=resolved_name,
                 birth_date=birth_date,
+                email=resolved_email,
+                profile_image_url=resolved_profile_image,
             )
         except IntegrityError:
             raise AppException(
@@ -289,29 +298,9 @@ class AuthService:
     async def withdraw_account(
         self,
         *,
-        firebase_token: str,
         access_user_id: int,
         access_firebase_uid: str,
     ) -> None:
-        try:
-            decoded = await verify_firebase_id_token(firebase_token)
-        except FirebaseError:
-            raise AppException(
-                status_code=401,
-                code=401,
-                message="Firebase ID 토큰이 유효하지 않거나 만료되었습니다.",
-                error_key="INVALID_FIREBASE_TOKEN",
-            )
-
-        uid = decoded["uid"]
-        if uid != access_firebase_uid:
-            raise AppException(
-                status_code=401,
-                code=401,
-                message="인증 정보가 일치하지 않습니다.",
-                error_key="UNAUTHORIZED",
-            )
-
         user = await self._users.get_by_id(access_user_id)
         if user is None or user.firebase_uid != access_firebase_uid:
             raise AppException(
@@ -322,7 +311,7 @@ class AuthService:
             )
 
         try:
-            await delete_firebase_user(uid)
+            await delete_firebase_user(access_firebase_uid)
         except FirebaseError as e:
             raise AppException(
                 status_code=500,
@@ -330,4 +319,5 @@ class AuthService:
                 message="Firebase 계정 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.",
             ) from e
 
+        await self._auth.revoke_all_refresh_sessions_by_user(access_user_id)
         await self._users.delete(access_user_id)
