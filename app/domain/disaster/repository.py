@@ -1,0 +1,38 @@
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from app.domain.disaster.entity import (
+    DisasterImpact,
+    DisasterImpactFull,
+    EarthquakeDetail,
+    FireDetail,
+    FloodDetail,
+    TyphoonDetail,
+)
+
+
+class DisasterRepository(ABC):
+    @abstractmethod
+    async def create_impact(self, impact: DisasterImpact) -> DisasterImpact: ...
+
+    @abstractmethod
+    async def create_flood_detail(self, detail: FloodDetail) -> None: ...
+
+    @abstractmethod
+    async def create_typhoon_detail(self, detail: TyphoonDetail) -> None: ...
+
+    @abstractmethod
+    async def create_earthquake_detail(self, detail: EarthquakeDetail) -> None: ...
+
+    @abstractmethod
+    async def create_fire_detail(self, detail: FireDetail) -> None: ...
+
+    @abstractmethod
+    async def update_context(
+        self, user_disaster_id: int, can_go_out: bool, available_time: str
+    ) -> Optional[DisasterImpact]: ...
+
+    @abstractmethod
+    async def get_impact_full(
+        self, user_disaster_id: int
+    ) -> Optional[DisasterImpactFull]: ...
