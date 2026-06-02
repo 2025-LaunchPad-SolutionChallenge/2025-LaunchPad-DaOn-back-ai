@@ -1,46 +1,17 @@
 services:
-  mysql:
+  db:
     image: mysql:8.0
-    container_name: launchpad-mysql
-    restart: unless-stopped
+    container_name: quad_mysql
+    restart: always
     environment:
       MYSQL_ROOT_PASSWORD: rootsecret
       MYSQL_DATABASE: launchpad
       MYSQL_USER: appuser
       MYSQL_PASSWORD: appsecret
-      TZ: Asia/Seoul
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -prootsecret || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: launchpad-api
-    restart: unless-stopped
-    depends_on:
-      mysql:
-        condition: service_healthy
-    environment:
-      MYSQL_USER: appuser
-      MYSQL_PASSWORD: appsecret
-      MYSQL_HOST: mysql
-      MYSQL_PORT: 3306
-      MYSQL_DB: launchpad
-    ports:
-      - "8000:8000"
-    command: >
-      sh -c "alembic upgrade head &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    volumes:
-      - .:/app
 
 volumes:
   mysql_data:
