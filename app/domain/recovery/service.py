@@ -65,10 +65,14 @@ def label_recovery_stage(f: RecoveryFeatures) -> Stage:
 
 
 def _get_stage_cap(days: int) -> Stage:
-    """초기 안정화 규칙: 경과 일수에 따른 단계 상한."""
+    """초기 안정화 규칙: 경과 일수에 따른 단계 상한.
+    1~3일(days_since 0~2): Chaos/Stagnant만
+    4~6일(days_since 3~5): Attempting까지
+    7일 이상(days_since 6+): 제한 없음
+    """
     if days < 3:
         return Stage.STAGNANT
-    if days < 7:
+    if days < 6:
         return Stage.ATTEMPTING
     return Stage.RECOVERY_MAINTAINED
 
@@ -141,8 +145,8 @@ def _apply_transition(f: RecoveryFeatures, raw: Stage) -> Stage:
         # 고위험군(risk=3) → 시도기 진입은 4일 연속 필요
         required = 4 if (f.onboarding_risk_level == 3 and raw == Stage.ATTEMPTING) else 3
         if f.consecutive_qualifying_days >= required:
-            # 당일 need_score == -1.0 이면 승급 하루 보류
-            if f.today_need_score == -1.0:
+            # 당일 need_score == -1.0 이면 승급 하루 보류 (정수로 비교)
+            if int(round(f.today_need_score)) == -1:
                 return current
             return raw
         return current

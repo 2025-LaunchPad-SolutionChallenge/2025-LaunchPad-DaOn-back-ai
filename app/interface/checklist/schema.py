@@ -17,6 +17,7 @@ class ChecklistGenerateRequest(CamelModel):
 class GeneratedItemInfo(CamelModel):
     checklist_item_id: int
     title: str
+    priority: int
     item_source_type: str
 
 

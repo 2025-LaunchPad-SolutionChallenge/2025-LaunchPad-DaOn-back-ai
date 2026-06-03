@@ -20,7 +20,11 @@ _TIME_MAP = {
 }
 
 
-def _build_prompt(full: DisasterImpactFull) -> str:
+def _build_prompt(
+    full: DisasterImpactFull,
+    recovery_stage: str,
+    weekly_progress: float,
+) -> str:
     impact = full.impact
     disaster_str = ""
 
@@ -77,10 +81,10 @@ def _build_prompt(full: DisasterImpactFull) -> str:
 - 거주 상태: {impact.residence_status}
 
 [사용자 상태]
-- 회복 단계: TRYING (TODO: 추후 DB 연동 필요)
-- 주간 달성률: 0.65 (TODO: 추후 DB 연동 필요)
+- 회복 단계: {recovery_stage}
 - 외출 가능 여부: {can_go_out_str}
 - 외출 가능 시간: {avail_time_str}
+- 주간 달성률: {weekly_progress:.2f}
 
 조건:
 1. 반드시 딱 3개의 할 일(title)만 생성할 것
@@ -119,11 +123,13 @@ async def generate_ai_checklist(
     impact_full: DisasterImpactFull,
     user_disaster_id: int,
     target_date: date,
+    recovery_stage: str = "CHAOS",
+    weekly_progress: float = 0.0,
 ) -> List[ChecklistItem]:
     if not impact_full:
         raise NotFoundException("해당 사용자의 재난 온보딩 정보가 존재하지 않습니다.")
 
-    prompt = _build_prompt(impact_full)
+    prompt = _build_prompt(impact_full, recovery_stage, weekly_progress)
     titles = _call_gemini(prompt)
     items = [
         ChecklistItem(
@@ -131,8 +137,8 @@ async def generate_ai_checklist(
             checklist_date=target_date,
             title=title,
             item_source_type="AI_GENERATED",
-            priority=1,
+            priority=idx + 1,
         )
-        for title in titles
+        for idx, title in enumerate(titles)
     ]
     return await repo.save_items(items)
