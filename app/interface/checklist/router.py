@@ -1,7 +1,10 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dependencies import get_db
+from app.common.security import get_current_user
 from app.domain.checklist import service as checklist_service
 from app.infrastructure.repositories.checklist_repository import SQLChecklistRepository
 from app.infrastructure.repositories.disaster_repository import SQLDisasterRepository
@@ -18,6 +21,7 @@ router = APIRouter(prefix="/checklists", tags=["checklists"])
 async def generate_ai_checklist(
     req: ChecklistGenerateRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
 ) -> ChecklistGenerateResponse:
     disaster_repo = SQLDisasterRepository(db)
     impact_full = await disaster_repo.get_impact_full(req.user_disaster_id)

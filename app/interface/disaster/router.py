@@ -1,7 +1,10 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dependencies import get_db
+from app.common.security import get_current_user
 from app.domain.disaster import service as disaster_service
 from app.infrastructure.repositories.disaster_repository import SQLDisasterRepository
 from app.interface.disaster.schema import (
@@ -18,6 +21,7 @@ router = APIRouter(tags=["disasters"])
 async def submit_onboarding(
     req: OnboardingRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
 ) -> OnboardingResponse:
     repo = SQLDisasterRepository(db)
     saved = await disaster_service.process_onboarding(
@@ -41,6 +45,7 @@ async def submit_onboarding(
 async def submit_context(
     req: ContextRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
 ) -> ContextResponse:
     repo = SQLDisasterRepository(db)
     await disaster_service.update_checklist_context(
