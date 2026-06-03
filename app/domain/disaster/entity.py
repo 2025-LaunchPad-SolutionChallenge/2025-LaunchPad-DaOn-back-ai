@@ -11,6 +11,8 @@ class DisasterImpact:
     safety_status: Optional[str] = None
     can_go_out: Optional[bool] = None
     available_time: Optional[str] = None
+    psychological_anxiety: Optional[bool] = None
+    onboarding_risk_level: Optional[int] = None
 
 
 @dataclass

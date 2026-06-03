@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -22,11 +22,13 @@ class RecoveryStageMasterModel(TimestampMixin, Base):
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     user_disasters: Mapped[List["UserDisasterModel"]] = relationship(back_populates="recovery_stage")
-    recovery_outputs: Mapped[List["RecoveryOutputModel"]] = relationship(back_populates="recovery_stage")
 
 
 class RecoveryOutputModel(Base):
     __tablename__ = "recovery_outputs"
+    __table_args__ = (
+        UniqueConstraint("user__disaster_id", "state_date", name="uq_recovery_output_user_date"),
+    )
 
     output_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     user_disaster_id: Mapped[int] = mapped_column(
@@ -36,19 +38,15 @@ class RecoveryOutputModel(Base):
         nullable=False,
         index=True,
     )
-    # [수정] recovery_stage_id2 → recovery_stage_id (불필요한 숫자 접미사 제거)
-    recovery_stage_id: Mapped[int] = mapped_column(
-        "recovery_stage_id",
-        Integer,
-        ForeignKey("recovery_stage_masters.recovery_stage_id"),
-        nullable=False,
-    )
-    state_date: Mapped[date] = mapped_column("state_date", Date, nullable=False)
-    # [수정] Date → DateTime (다른 테이블과 일관성 유지)
+    state_date: Mapped[date] = mapped_column(Date, nullable=False)
+    predicted_stage: Mapped[str] = mapped_column(String(20), nullable=False)
+    raw_stage: Mapped[str] = mapped_column(String(20), nullable=False)
+    task_1: Mapped[str] = mapped_column(String(255), nullable=False)
+    task_2: Mapped[str] = mapped_column(String(255), nullable=False)
+    task_3: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     user_disaster: Mapped["UserDisasterModel"] = relationship(back_populates="recovery_outputs")
-    recovery_stage: Mapped["RecoveryStageMasterModel"] = relationship(back_populates="recovery_outputs")
 
 
 class RecoveryFeatureModel(Base):
@@ -68,6 +66,9 @@ class RecoveryFeatureModel(Base):
     avg_7d_action_score: Mapped[float] = mapped_column(Float, nullable=False)
     outing_capability: Mapped[float] = mapped_column(Float, nullable=False)
     avg_7d_task_completion_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    avg_7d_available_time: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    recent_3d_need_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recent_3d_no_outing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     user_disaster: Mapped["UserDisasterModel"] = relationship(back_populates="recovery_features")

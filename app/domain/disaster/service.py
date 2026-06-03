@@ -9,10 +9,20 @@ from app.domain.disaster.entity import (
     TyphoonDetail,
 )
 from app.domain.disaster.repository import DisasterRepository
+from app.domain.recovery.service import calculate_onboarding_risk_level
 
 
 def _safe_get(arr: list, index: int, default: bool = False) -> bool:
     return arr[index] if index < len(arr) else default
+
+
+# 재난 유형별 damages 배열에서 심리적 불안 인덱스
+_PSYCHOLOGICAL_INDEX = {
+    "FLOOD": 4,
+    "TYPHOON": 7,
+    "EARTHQUAKE": 6,
+    "FIRE": 5,
+}
 
 
 async def process_onboarding(
@@ -29,12 +39,17 @@ async def process_onboarding(
     fire_damage_scope: Optional[str] = None,
     smoke_inhalation: Optional[str] = None,
 ) -> DisasterImpact:
+    psych_index = _PSYCHOLOGICAL_INDEX.get(disaster_type)
+    psychological_anxiety = _safe_get(damages, psych_index) if psych_index is not None else False
+
     impact = DisasterImpact(
         user_disaster_id=disaster_id,
         safety_status=safety_status,
         residence_status=residence_status,
         injury_level=injury_level,
+        psychological_anxiety=psychological_anxiety,
     )
+    impact.onboarding_risk_level = calculate_onboarding_risk_level(impact)
     saved = await repo.create_impact(impact)
 
     if disaster_type == "FLOOD":

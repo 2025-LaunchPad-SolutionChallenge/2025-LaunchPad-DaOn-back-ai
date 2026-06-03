@@ -163,11 +163,15 @@ class DisasterImpactModel(TimestampMixin, Base):
     injury_level: Mapped[InjuryLevel] = mapped_column(SAEnum(InjuryLevel), nullable=False)
     # [수정] canGoOut → can_go_out (camelCase → snake_case)
     can_go_out: Mapped[Optional[bool]] = mapped_column("can_go_out", Boolean, nullable=True)
-    # [수정] availableTime → available_time (camelCase → snake_case)
     available_time: Mapped[Optional[AvailableTime]] = mapped_column(
         "available_time", SAEnum(AvailableTime), nullable=True
     )
-    # [제거] ddl_field("Field") 플레이스홀더 컬럼 삭제
+    psychological_anxiety: Mapped[Optional[bool]] = mapped_column(
+        "psychological_anxiety", Boolean, nullable=True
+    )
+    onboarding_risk_level: Mapped[Optional[int]] = mapped_column(
+        "onboarding_risk_level", Integer, nullable=True
+    )
 
     user_disaster: Mapped["UserDisasterModel"] = relationship(back_populates="impact")
     earthquake_detail: Mapped[Optional["EarthquakeImpactModel"]] = relationship(

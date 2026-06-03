@@ -89,6 +89,7 @@ class OnboardingRequest(CamelModel):
 
 class OnboardingResponse(CamelModel):
     impact_id: int
+    onboarding_risk_level: int
     message: str
 
 

@@ -38,7 +38,11 @@ async def submit_onboarding(
         fire_damage_scope=req.fire_damage_scope.value if req.fire_damage_scope else None,
         smoke_inhalation=req.smoke_inhalation.value if req.smoke_inhalation else None,
     )
-    return OnboardingResponse(impact_id=saved.impact_id, message="피해 상황이 등록되었습니다")
+    return OnboardingResponse(
+        impact_id=saved.impact_id,
+        onboarding_risk_level=saved.onboarding_risk_level,
+        message="피해 상황이 등록되었습니다",
+    )
 
 
 @router.post("/checklists/context", response_model=ContextResponse)

@@ -31,6 +31,8 @@ def _model_to_entity(model: DisasterImpactModel) -> DisasterImpact:
         injury_level=model.injury_level.value,
         can_go_out=model.can_go_out,
         available_time=model.available_time.value if model.available_time else None,
+        psychological_anxiety=model.psychological_anxiety,
+        onboarding_risk_level=model.onboarding_risk_level,
     )
 
 
@@ -108,6 +110,8 @@ class SQLDisasterRepository(DisasterRepository):
             safety_status=impact.safety_status,
             residence_status=impact.residence_status,
             injury_level=impact.injury_level,
+            psychological_anxiety=impact.psychological_anxiety,
+            onboarding_risk_level=impact.onboarding_risk_level,
         )
         self._session.add(model)
         await self._session.flush()
