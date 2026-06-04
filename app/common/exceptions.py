@@ -2,10 +2,18 @@ from fastapi import HTTPException
 
 
 class AppException(HTTPException):
-    def __init__(self, status_code: int, code: int, message: str):
+    def __init__(
+        self,
+        status_code: int,
+        code: int,
+        message: str,
+        *,
+        error_key: str | None = None,
+    ):
         super().__init__(status_code=status_code, detail=message)
         self.code = code
         self.message = message
+        self.error_key = error_key
 
 
 class BadRequestException(AppException):

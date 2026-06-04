@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # ── Firebase ──────────────────────────────────────────────────────────
     FIREBASE_CREDENTIALS_PATH: str
+    FIREBASE_STORAGE_BUCKET: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
