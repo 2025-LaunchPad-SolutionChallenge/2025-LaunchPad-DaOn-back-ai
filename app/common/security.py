@@ -13,7 +13,8 @@ async def get_current_user(
     token = credentials.credentials
     try:
         decoded = auth.verify_id_token(token)
-    except Exception:
+    except Exception as e:
+        print(f"[Auth] 토큰 검증 실패: {type(e).__name__}: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="유효하지 않은 토큰입니다.",
