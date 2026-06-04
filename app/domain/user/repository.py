@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import date
 
-from app.domain.user.entity import User
+from app.domain.user.entity import User, UserProfile
 
 
 class UserRepository(ABC):
@@ -34,4 +34,17 @@ class UserRepository(ABC):
         provider_uid: str,
         provider_email: str | None,
         email_verified: bool,
+    ) -> None: ...
+
+    @abstractmethod
+    async def get_profile_by_user_id(self, user_id: int) -> UserProfile | None: ...
+
+    @abstractmethod
+    async def update_profile(
+        self,
+        *,
+        user_id: int,
+        nickname: str | None = None,
+        address_name: str | None = None,
+        profile_image_url: str | None = None,
     ) -> None: ...

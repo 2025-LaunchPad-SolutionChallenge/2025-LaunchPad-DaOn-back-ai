@@ -12,7 +12,11 @@ from app.domain.auth.service import AuthService
 from app.infrastructure.repositories.auth_repository import SqlAlchemyAuthRepository
 from app.infrastructure.repositories.user_repository import SqlAlchemyUserRepository
 
-_bearer_optional = HTTPBearer(auto_error=False)
+_bearer_optional = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="JWT 액세스 토큰",
+)
 
 
 async def get_current_access_payload(

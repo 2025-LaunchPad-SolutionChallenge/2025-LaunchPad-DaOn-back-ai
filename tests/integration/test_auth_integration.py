@@ -101,8 +101,10 @@ def test_register_login_refresh_me_logout_revoked_chain() -> None:
         )
         assert me.status_code == 200, me.text
         payload = me.json()
-        assert payload.get("sub")
-        assert payload.get("firebase_uid") == _uid_from_token(token)
+        assert payload.get("userId") >= 1
+        assert payload.get("name") == "통합테스트"
+        assert payload.get("birthDate") == "1995-03-15"
+        assert payload.get("residenceVerified") is False
 
         out = client.post(
             "/api/v1/auth/logout",
@@ -218,6 +220,97 @@ def test_register_missing_fields_400() -> None:
         r = client.post("/api/v1/auth/register", json={})
         assert r.status_code == 400, r.text
         assert r.json().get("code") == "VALIDATION_ERROR"
+
+
+def _firebase_storage_url(filename: str = "avatar.png") -> str:
+    return (
+        "https://firebasestorage.googleapis.com/v0/b/test-project.appspot.com/o/"
+        f"profile-images%2F{filename}?alt=media&token=mock"
+    )
+
+
+def test_user_profile_update_and_upload_flow() -> None:
+    token = "firebase-ok-profile-" + secrets.token_hex(6)
+    profile_url = _firebase_storage_url("avatar.png")
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "프로필테스트",
+                "birthDate": "1994-07-21",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
+
+        update = client.put(
+            "/api/v1/users/me",
+            headers={"Authorization": f"Bearer {access}"},
+            data={
+                "nickname": "kate",
+                "addressName": "서울 강남구 역삼1동",
+                "householdType": "SINGLE",
+                "profileImageUrl": profile_url,
+            },
+        )
+        assert update.status_code == 200, update.text
+        assert update.json()["message"] == "프로필이 수정되었습니다"
+
+        me = client.get(
+            "/api/v1/users/me",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert me.status_code == 200, me.text
+        profile = me.json()
+        assert profile["nickname"] == "kate"
+        assert profile["addressName"] == "서울 강남구 역삼1동"
+        assert profile["profileImage"] == profile_url
+        assert profile["residenceVerified"] is False
+
+        webp_url = _firebase_storage_url("avatar.webp")
+        image_upload = client.post(
+            "/api/v1/users/me/profile-image",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"profileImageUrl": webp_url},
+        )
+        assert image_upload.status_code == 200, image_upload.text
+        assert image_upload.json()["profileImageUrl"] == webp_url
+
+
+def test_user_profile_image_upload_validation_errors() -> None:
+    token = "firebase-ok-profile-invalid-" + secrets.token_hex(6)
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={"firebaseToken": token, "name": "파일검증", "birthDate": "1991-01-01"},
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
+
+        missing = client.post(
+            "/api/v1/users/me/profile-image",
+            headers={"Authorization": f"Bearer {access}"},
+            json={},
+        )
+        assert missing.status_code == 400, missing.text
+        assert missing.json()["code"] == "MISSING_PROFILE_IMAGE_URL"
+
+        bad_type = client.post(
+            "/api/v1/users/me/profile-image",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"profileImageUrl": _firebase_storage_url("avatar.gif")},
+        )
+        assert bad_type.status_code == 400, bad_type.text
+        assert bad_type.json()["code"] == "UNSUPPORTED_FILE_TYPE"
+
+        bad_host = client.post(
+            "/api/v1/users/me/profile-image",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"profileImageUrl": "https://example.com/avatar.png"},
+        )
+        assert bad_host.status_code == 400, bad_host.text
+        assert bad_host.json()["code"] == "INVALID_PROFILE_IMAGE_URL"
 
 
 def test_refresh_with_old_token_after_rotate() -> None:

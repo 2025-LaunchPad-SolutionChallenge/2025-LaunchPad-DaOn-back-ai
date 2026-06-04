@@ -12,3 +12,17 @@ class User:
     nickname: str | None
     profile_image_url: str | None
     birth_date: date | None
+
+
+@dataclass(frozen=True)
+class UserProfile:
+    """프로필 조회 응답용 스냅샷."""
+
+    user_id: int
+    name: str | None
+    nickname: str | None
+    birth_date: date | None
+    age: int | None
+    profile_image_url: str | None
+    residence_verified: bool
+    address_name: str | None
