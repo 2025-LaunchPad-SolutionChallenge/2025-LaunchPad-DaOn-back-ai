@@ -21,7 +21,7 @@ async def submit_daily_status(
     repo = SQLHomeRepository(db)
     saved = await home_service.submit_daily_status(
         repo=repo,
-        firebase_uid=current_user["uid"],
+        firebase_uid=current_user["firebase_uid"],
         emotion_score=req.emotion_score,
         condition_score=req.energy_score,
         action_score=req.activity_score,
