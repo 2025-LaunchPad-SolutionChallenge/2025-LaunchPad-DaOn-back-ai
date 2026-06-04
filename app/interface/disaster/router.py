@@ -24,9 +24,10 @@ async def submit_onboarding(
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> OnboardingResponse:
     repo = SQLDisasterRepository(db)
+    user_id = int(current_user["sub"])
     saved = await disaster_service.process_onboarding(
         repo=repo,
-        disaster_id=req.disaster_id,
+        user_id=user_id,
         disaster_type=req.disaster_type.value,
         safety_status=req.safety_status.value if req.safety_status else None,
         residence_status=req.residence_status.value,
@@ -39,6 +40,7 @@ async def submit_onboarding(
         smoke_inhalation=req.smoke_inhalation.value if req.smoke_inhalation else None,
     )
     return OnboardingResponse(
+        user_disaster_id=saved.user_disaster_id,
         impact_id=saved.impact_id,
         onboarding_risk_level=saved.onboarding_risk_level,
         message="피해 상황이 등록되었습니다",

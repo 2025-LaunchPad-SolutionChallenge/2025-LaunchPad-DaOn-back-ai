@@ -13,6 +13,17 @@ from app.domain.disaster.entity import (
 
 class DisasterRepository(ABC):
     @abstractmethod
+    async def get_disaster_type_id_by_code(self, code: str) -> int: ...
+
+    @abstractmethod
+    async def get_initial_recovery_stage_id(self) -> int: ...
+
+    @abstractmethod
+    async def create_user_disaster(
+        self, user_id: int, disaster_type_id: int, recovery_stage_id: int
+    ) -> int: ...
+
+    @abstractmethod
     async def create_impact(self, impact: DisasterImpact) -> DisasterImpact: ...
 
     @abstractmethod

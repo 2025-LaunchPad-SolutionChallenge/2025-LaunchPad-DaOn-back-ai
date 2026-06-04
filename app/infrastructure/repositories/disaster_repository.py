@@ -15,11 +15,15 @@ from app.domain.disaster.entity import (
 from app.domain.disaster.repository import DisasterRepository
 from app.infrastructure.models.disaster_model import (
     DisasterImpactModel,
+    DisasterTypeModel,
     EarthquakeImpactModel,
     FireImpactModel,
     FloodImpactModel,
+    RegistrationStatus,
     TyphoonImpactModel,
+    UserDisasterModel,
 )
+from app.infrastructure.models.recovery_model import RecoveryStageMasterModel
 
 
 def _model_to_entity(model: DisasterImpactModel) -> DisasterImpact:
@@ -103,6 +107,37 @@ def _model_to_full(model: DisasterImpactModel) -> DisasterImpactFull:
 class SQLDisasterRepository(DisasterRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def get_disaster_type_id_by_code(self, code: str) -> int:
+        result = await self._session.execute(
+            select(DisasterTypeModel.disaster_type_id).where(
+                DisasterTypeModel.disaster_code == code
+            )
+        )
+        return result.scalar_one()
+
+    async def get_initial_recovery_stage_id(self) -> int:
+        result = await self._session.execute(
+            select(RecoveryStageMasterModel.recovery_stage_id).where(
+                RecoveryStageMasterModel.stage_code == "CHAOS"
+            )
+        )
+        return result.scalar_one()
+
+    async def create_user_disaster(
+        self, user_id: int, disaster_type_id: int, recovery_stage_id: int
+    ) -> int:
+        model = UserDisasterModel(
+            user_id=user_id,
+            disaster_type_id=disaster_type_id,
+            registration_status=RegistrationStatus.ACTIVE,
+            recovery_stage_id=recovery_stage_id,
+            recovery_progress=0.0,
+        )
+        self._session.add(model)
+        await self._session.flush()
+        await self._session.refresh(model)
+        return model.user_disaster_id
 
     async def create_impact(self, impact: DisasterImpact) -> DisasterImpact:
         model = DisasterImpactModel(

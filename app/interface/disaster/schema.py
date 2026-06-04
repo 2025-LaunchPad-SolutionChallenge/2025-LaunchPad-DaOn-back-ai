@@ -74,7 +74,6 @@ class AvailableTime(str, Enum):
 
 
 class OnboardingRequest(CamelModel):
-    disaster_id: int
     disaster_type: DisasterType
     safety_status: Optional[SafetyStatus] = None
     residence_status: ResidenceStatus
@@ -88,6 +87,7 @@ class OnboardingRequest(CamelModel):
 
 
 class OnboardingResponse(CamelModel):
+    user_disaster_id: int
     impact_id: int
     onboarding_risk_level: int
     message: str

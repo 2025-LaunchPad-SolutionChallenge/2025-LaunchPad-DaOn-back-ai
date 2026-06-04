@@ -16,12 +16,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 기존 FK 컬럼 제거
-    op.drop_constraint(
-        "recovery_outputs_ibfk_2",   # MySQL 기본 FK 이름, 환경에 따라 다를 수 있음
-        "recovery_outputs",
-        type_="foreignkey",
+    # recovery_stage_id를 참조하는 FK 이름을 동적으로 찾아 삭제
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    fks = inspector.get_foreign_keys("recovery_outputs")
+    fk_name = next(
+        (fk["name"] for fk in fks if "recovery_stage_id" in fk["constrained_columns"]),
+        None,
     )
+    if fk_name:
+        op.drop_constraint(fk_name, "recovery_outputs", type_="foreignkey")
     op.drop_column("recovery_outputs", "recovery_stage_id")
 
     # 신규 컬럼 추가

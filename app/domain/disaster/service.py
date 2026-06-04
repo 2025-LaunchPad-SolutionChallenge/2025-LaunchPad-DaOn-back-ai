@@ -27,7 +27,7 @@ _PSYCHOLOGICAL_INDEX = {
 
 async def process_onboarding(
     repo: DisasterRepository,
-    disaster_id: int,
+    user_id: int,
     disaster_type: str,
     safety_status: Optional[str],
     residence_status: str,
@@ -39,11 +39,15 @@ async def process_onboarding(
     fire_damage_scope: Optional[str] = None,
     smoke_inhalation: Optional[str] = None,
 ) -> DisasterImpact:
+    disaster_type_id = await repo.get_disaster_type_id_by_code(disaster_type)
+    initial_stage_id = await repo.get_initial_recovery_stage_id()
+    user_disaster_id = await repo.create_user_disaster(user_id, disaster_type_id, initial_stage_id)
+
     psych_index = _PSYCHOLOGICAL_INDEX.get(disaster_type)
     psychological_anxiety = _safe_get(damages, psych_index) if psych_index is not None else False
 
     impact = DisasterImpact(
-        user_disaster_id=disaster_id,
+        user_disaster_id=user_disaster_id,
         safety_status=safety_status,
         residence_status=residence_status,
         injury_level=injury_level,
