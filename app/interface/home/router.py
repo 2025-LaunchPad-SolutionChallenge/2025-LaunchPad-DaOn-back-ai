@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dependencies import get_db
-from app.common.security import get_current_user
+from app.common.dependencies import get_current_user
 from app.domain.home import service as home_service
 from app.infrastructure.repositories.home_repository import SQLHomeRepository
 from app.interface.home.schema import DailyStatusRequest, DailyStatusResponse

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dependencies import get_db
-from app.common.security import get_current_user
+from app.common.dependencies import get_current_user
 from app.domain.disaster import service as disaster_service
 from app.infrastructure.repositories.disaster_repository import SQLDisasterRepository
 from app.interface.disaster.schema import (

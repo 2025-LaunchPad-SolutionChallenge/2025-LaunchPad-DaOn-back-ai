@@ -25,7 +25,12 @@ class CommunityProfileModel(TimestampMixin, Base):
     contribution_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     user: Mapped["UserModel"] = relationship(back_populates="community_profile")
-    posts: Mapped[List["CommunityPostModel"]] = relationship(back_populates="author_profile")
+    posts: Mapped[List["CommunityPostModel"]] = relationship(
+        back_populates="author_profile",
+        primaryjoin="CommunityProfileModel.user_id == CommunityPostModel.user_id",
+        foreign_keys="CommunityPostModel.user_id",
+        viewonly=True,
+    )
 
 
 class CommunityCategoryModel(TimestampMixin, Base):

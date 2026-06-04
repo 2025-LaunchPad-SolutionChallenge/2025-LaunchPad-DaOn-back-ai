@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dependencies import get_db
-from app.common.security import get_current_user
+from app.common.dependencies import get_current_user
 from app.domain.checklist import service as checklist_service
 from app.infrastructure.models.checklist_model import ChecklistItemModel
 from app.infrastructure.models.recovery_model import RecoveryOutputModel

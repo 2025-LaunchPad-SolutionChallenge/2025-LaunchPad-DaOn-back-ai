@@ -1,0 +1,7 @@
+{
+  "type": "service_account",
+  "project_id": "integration-dummy",
+  "private_key_id": "dummy",
+  "private_key": "-----BEGIN PRIVATE KEY-----\ndummy\n-----END PRIVATE KEY-----\n",
+  "client_email": "dummy@integration.test"
+}
