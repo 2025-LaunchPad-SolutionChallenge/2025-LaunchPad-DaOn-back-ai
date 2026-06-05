@@ -69,8 +69,7 @@ class SmokeInhalation(str, Enum):
 class AvailableTime(str, Enum):
     UNDER_ONE_HOUR = "UNDER_ONE_HOUR"
     ONE_TO_THREE_HOURS = "ONE_TO_THREE_HOURS"
-    HALF_DAY = "HALF_DAY"
-    ALL_DAY = "ALL_DAY"
+    ALL_DAY_HALF_DAY = "ALL_DAY_HALF_DAY"
 
 
 class OnboardingRequest(CamelModel):

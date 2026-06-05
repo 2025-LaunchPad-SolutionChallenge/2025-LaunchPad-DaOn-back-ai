@@ -1,16 +1,16 @@
 import json
-import os
 from datetime import date
 from typing import List
 
 import google.generativeai as genai
 
 from app.common.exceptions import NotFoundException
+from app.config import settings
 from app.domain.checklist.entity import ChecklistItem
 from app.domain.checklist.repository import ChecklistRepository
 from app.domain.disaster.entity import DisasterImpactFull
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=settings.GEMINI_API_KEY)
 
 _TIME_MAP = {
     "UNDER_ONE_HOUR": "1시간 이내",

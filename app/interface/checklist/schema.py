@@ -23,3 +23,17 @@ class GeneratedItemInfo(CamelModel):
 
 class ChecklistGenerateResponse(CamelModel):
     items: List[GeneratedItemInfo]
+
+
+class UserCondition(CamelModel):
+    can_go_out: bool
+    available_time: str
+
+
+class ContextRequest(CamelModel):
+    user_disaster_id: int
+    user_condition: UserCondition
+
+
+class ContextResponse(CamelModel):
+    message: str

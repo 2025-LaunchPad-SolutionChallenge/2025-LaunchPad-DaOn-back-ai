@@ -12,14 +12,12 @@ from app.infrastructure.models.disaster_model import UserDisasterModel
 from app.infrastructure.models.recovery_model import RecoveryOutputModel
 from app.infrastructure.repositories.disaster_repository import SQLDisasterRepository
 from app.interface.disaster.schema import (
-    ContextRequest,
-    ContextResponse,
     OnboardingRequest,
     OnboardingResponse,
     RecoveryStageResponse,
 )
 
-router = APIRouter(tags=["disasters"])
+router = APIRouter(prefix="/disasters", tags=["disasters"])
 
 
 @router.post("/onboarding", response_model=OnboardingResponse)
@@ -61,7 +59,7 @@ _STAGE_INFO = {
 }
 
 
-@router.get("/disasters/{disaster_id}/recovery/stage", response_model=RecoveryStageResponse)
+@router.get("/{disaster_id}/recovery/stage", response_model=RecoveryStageResponse)
 async def get_recovery_stage(
     disaster_id: int,
     db: AsyncSession = Depends(get_db),
@@ -97,17 +95,3 @@ async def get_recovery_stage(
     )
 
 
-@router.post("/checklists/context", response_model=ContextResponse)
-async def submit_context(
-    req: ContextRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> ContextResponse:
-    repo = SQLDisasterRepository(db)
-    await disaster_service.update_checklist_context(
-        repo=repo,
-        user_disaster_id=req.user_disaster_id,
-        can_go_out=req.user_condition.can_go_out,
-        available_time=req.user_condition.available_time.value,
-    )
-    return ContextResponse(message="상황 입력 완료")

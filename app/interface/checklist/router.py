@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.dependencies import get_db
 from app.common.dependencies import get_current_user
 from app.domain.checklist import service as checklist_service
+from app.domain.disaster import service as disaster_service
 from app.infrastructure.models.checklist_model import ChecklistItemModel
 from app.infrastructure.models.recovery_model import RecoveryFeatureModel, RecoveryOutputModel
 from app.infrastructure.repositories.checklist_repository import SQLChecklistRepository
@@ -15,10 +16,28 @@ from app.infrastructure.repositories.disaster_repository import SQLDisasterRepos
 from app.interface.checklist.schema import (
     ChecklistGenerateRequest,
     ChecklistGenerateResponse,
+    ContextRequest,
+    ContextResponse,
     GeneratedItemInfo,
 )
 
 router = APIRouter(prefix="/checklists", tags=["checklists"])
+
+
+@router.post("/context", response_model=ContextResponse)
+async def submit_context(
+    req: ContextRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> ContextResponse:
+    repo = SQLDisasterRepository(db)
+    await disaster_service.update_checklist_context(
+        repo=repo,
+        user_disaster_id=req.user_disaster_id,
+        can_go_out=req.user_condition.can_go_out,
+        available_time=req.user_condition.available_time,
+    )
+    return ContextResponse(message="상황 입력 완료")
 
 
 @router.post("/ai-generate", response_model=ChecklistGenerateResponse)
