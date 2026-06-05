@@ -24,6 +24,8 @@ def _build_prompt(
     full: DisasterImpactFull,
     recovery_stage: str,
     weekly_progress: float,
+    avg_7d_need_score: float = 0.0,
+    recent_3d_zero_task_count: int = 0,
 ) -> str:
     impact = full.impact
     disaster_str = ""
@@ -85,6 +87,8 @@ def _build_prompt(
 - 외출 가능 여부: {can_go_out_str}
 - 외출 가능 시간: {avail_time_str}
 - 주간 달성률: {weekly_progress:.2f}
+- 최근 7일 평균 필요 점수: {avg_7d_need_score:.2f}
+- 최근 3일간 체크리스트 0개 달성일 수: {recent_3d_zero_task_count}
 
 조건:
 1. 반드시 딱 3개의 할 일(title)만 생성할 것
@@ -125,11 +129,16 @@ async def generate_ai_checklist(
     target_date: date,
     recovery_stage: str = "CHAOS",
     weekly_progress: float = 0.0,
+    avg_7d_need_score: float = 0.0,
+    recent_3d_zero_task_count: int = 0,
 ) -> List[ChecklistItem]:
     if not impact_full:
         raise NotFoundException("해당 사용자의 재난 온보딩 정보가 존재하지 않습니다.")
 
-    prompt = _build_prompt(impact_full, recovery_stage, weekly_progress)
+    prompt = _build_prompt(
+        impact_full, recovery_stage, weekly_progress,
+        avg_7d_need_score, recent_3d_zero_task_count,
+    )
     titles = _call_gemini(prompt)
     items = [
         ChecklistItem(

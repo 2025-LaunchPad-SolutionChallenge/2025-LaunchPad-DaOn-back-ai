@@ -9,7 +9,7 @@ from app.common.dependencies import get_db
 from app.common.dependencies import get_current_user
 from app.domain.checklist import service as checklist_service
 from app.infrastructure.models.checklist_model import ChecklistItemModel
-from app.infrastructure.models.recovery_model import RecoveryOutputModel
+from app.infrastructure.models.recovery_model import RecoveryFeatureModel, RecoveryOutputModel
 from app.infrastructure.repositories.checklist_repository import SQLChecklistRepository
 from app.infrastructure.repositories.disaster_repository import SQLDisasterRepository
 from app.interface.checklist.schema import (
@@ -39,6 +39,9 @@ async def generate_ai_checklist(
     # 주간 달성률
     weekly_progress = await _get_weekly_progress(db, uid)
 
+    # 최근 회복 피처
+    features = await _get_latest_features(db, uid)
+
     checklist_repo = SQLChecklistRepository(db)
     items = await checklist_service.generate_ai_checklist(
         repo=checklist_repo,
@@ -47,6 +50,8 @@ async def generate_ai_checklist(
         target_date=req.target_date,
         recovery_stage=recovery_stage,
         weekly_progress=weekly_progress,
+        avg_7d_need_score=features.avg_7d_need_score if features else 0.0,
+        recent_3d_zero_task_count=features.recent_3d_zero_task_count if features else 0,
     )
 
     return ChecklistGenerateResponse(
@@ -60,6 +65,16 @@ async def generate_ai_checklist(
             for item in items
         ]
     )
+
+
+async def _get_latest_features(session: AsyncSession, user_disaster_id: int):
+    result = await session.execute(
+        select(RecoveryFeatureModel)
+        .where(RecoveryFeatureModel.user_disaster_id == user_disaster_id)
+        .order_by(RecoveryFeatureModel.feature_date.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def _get_recovery_stage(session: AsyncSession, user_disaster_id: int) -> str:
