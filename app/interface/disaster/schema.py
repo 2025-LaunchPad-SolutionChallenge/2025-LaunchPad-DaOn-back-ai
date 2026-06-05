@@ -105,3 +105,10 @@ class ContextRequest(CamelModel):
 
 class ContextResponse(CamelModel):
     message: str
+
+
+class RecoveryStageResponse(CamelModel):
+    stage_id: int
+    stage_code: str
+    stage_name: str
+    description: str
