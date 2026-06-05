@@ -67,8 +67,10 @@ class RecoveryFeatureModel(Base):
     outing_capability: Mapped[float] = mapped_column(Float, nullable=False)
     avg_7d_task_completion_rate: Mapped[float] = mapped_column(Float, nullable=False)
     avg_7d_available_time: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    avg_7d_need_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     recent_3d_need_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     recent_3d_no_outing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recent_3d_zero_task_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     user_disaster: Mapped["UserDisasterModel"] = relationship(back_populates="recovery_features")

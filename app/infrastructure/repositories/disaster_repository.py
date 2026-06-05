@@ -24,6 +24,7 @@ from app.infrastructure.models.disaster_model import (
     UserDisasterModel,
 )
 from app.infrastructure.models.recovery_model import RecoveryStageMasterModel
+from app.infrastructure.models.user_model import UserSettingModel
 
 
 def _model_to_entity(model: DisasterImpactModel) -> DisasterImpact:
@@ -138,6 +139,17 @@ class SQLDisasterRepository(DisasterRepository):
         await self._session.flush()
         await self._session.refresh(model)
         return model.user_disaster_id
+
+    async def upsert_user_setting(self, user_id: int, user_disaster_id: int) -> None:
+        result = await self._session.execute(
+            select(UserSettingModel).where(UserSettingModel.user_id == user_id)
+        )
+        setting = result.scalar_one_or_none()
+        if setting is None:
+            self._session.add(UserSettingModel(user_id=user_id, user_disaster_id=user_disaster_id))
+        else:
+            setting.user_disaster_id = user_disaster_id
+        await self._session.flush()
 
     async def create_impact(self, impact: DisasterImpact) -> DisasterImpact:
         model = DisasterImpactModel(

@@ -55,6 +55,7 @@ async def process_onboarding(
     )
     impact.onboarding_risk_level = calculate_onboarding_risk_level(impact)
     saved = await repo.create_impact(impact)
+    await repo.upsert_user_setting(user_id, user_disaster_id)
 
     if disaster_type == "FLOOD":
         if not flood_level or not water_drain_status:

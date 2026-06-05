@@ -24,6 +24,9 @@ class DisasterRepository(ABC):
     ) -> int: ...
 
     @abstractmethod
+    async def upsert_user_setting(self, user_id: int, user_disaster_id: int) -> None: ...
+
+    @abstractmethod
     async def create_impact(self, impact: DisasterImpact) -> DisasterImpact: ...
 
     @abstractmethod
