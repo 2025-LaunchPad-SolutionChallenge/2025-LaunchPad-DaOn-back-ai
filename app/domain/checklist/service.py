@@ -107,7 +107,7 @@ def _build_prompt(
 def _call_gemini(prompt: str) -> List[str]:
     try:
         model = genai.GenerativeModel(
-            "gemini-1.5-flash",
+            "gemini-3.5-flash",
             generation_config={"response_mime_type": "application/json"},
         )
         response = model.generate_content(prompt)
@@ -118,7 +118,9 @@ def _call_gemini(prompt: str) -> List[str]:
             titles += ["안전 상태 다시 한번 확인하기"] * (3 - len(titles))
         return titles
     except Exception as e:
-        print(f"Gemini API Error: {e}")
+        import traceback
+        print(f"[Gemini API Error] {type(e).__name__}: {e}")
+        traceback.print_exc()
         return ["가족 지인에게 안전 연락하기", "파손된 물건 사진 찍어두기", "식수 및 비상식량 확인하기"]
 
 
