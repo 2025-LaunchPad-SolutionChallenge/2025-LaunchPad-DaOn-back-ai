@@ -3,9 +3,8 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.dependencies import get_db
+from app.common.dependencies import get_db, get_current_user
 from app.common.swagger import error_responses
-from app.dependencies.auth import get_current_user
 from app.domain.user.service import UserService
 from app.infrastructure.repositories.user_repository import SqlAlchemyUserRepository
 from app.interface.user.schema import (

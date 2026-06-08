@@ -55,6 +55,10 @@ async def get_current_access_payload(
     return payload
 
 
+# 우리 라우터들(disaster, checklist, home)에서 import하는 이름 호환
+get_current_user = get_current_access_payload
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
