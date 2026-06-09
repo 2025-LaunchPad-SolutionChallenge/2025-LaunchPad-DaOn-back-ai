@@ -60,6 +60,7 @@ def _parse_query_date_or_400(name: str, value: str | None) -> date | None:
     response_model=ChecklistMutationResponse,
     status_code=201,
     summary="체크리스트 항목 추가",
+    description="특정 재난에 수동 체크리스트 항목을 추가합니다. 기본 완료 상태는 false입니다.",
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def create_checklist_item(
@@ -87,6 +88,7 @@ async def create_checklist_item(
     "/disasters/{userDisasterId}/checklist/{checklistItemId}",
     response_model=ChecklistMutationResponse,
     summary="체크리스트 항목 수정",
+    description="체크리스트 제목/일자/우선순위/완료 여부를 부분 수정합니다.",
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def patch_checklist_item(
@@ -123,6 +125,7 @@ async def patch_checklist_item(
     response_model=AttachmentMutationResponse,
     status_code=201,
     summary="체크리스트 첨부 추가",
+    description="체크리스트 항목에 메모/이미지/파일 첨부를 추가합니다.",
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def create_attachment(
@@ -155,6 +158,7 @@ async def create_attachment(
     "/disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}",
     response_model=AttachmentMutationResponse,
     summary="체크리스트 첨부 수정",
+    description="첨부 본문 또는 파일 메타데이터를 부분 수정합니다.",
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def patch_attachment(
@@ -200,6 +204,7 @@ async def patch_attachment(
     "/disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}",
     response_model=AttachmentMutationResponse,
     summary="체크리스트 첨부 삭제",
+    description="체크리스트 항목의 첨부를 삭제합니다.",
     responses=error_responses(401, 403, 404, 409, 500),
 )
 async def delete_attachment(
@@ -226,6 +231,7 @@ async def delete_attachment(
     "/disasters/{userDisasterId}/checklist/{checklistItemId}/status",
     response_model=ChecklistStatusResponse,
     summary="체크리스트 완료 상태 변경",
+    description="체크리스트 항목의 완료 상태를 변경합니다. true면 완료 시각을 기록합니다.",
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def patch_checklist_status(
@@ -269,6 +275,7 @@ async def patch_checklist_status(
     "/disasters/{userDisasterId}/checklist/{checklistItemId}",
     response_model=ChecklistDeleteResponse,
     summary="체크리스트 항목 삭제",
+    description="체크리스트 항목과 해당 항목에 매핑된 첨부를 함께 삭제합니다.",
     responses=error_responses(401, 403, 404, 500),
 )
 async def delete_checklist(
@@ -294,6 +301,7 @@ async def delete_checklist(
     "/disasters/{userDisasterId}/checklist/{checklistItemId}",
     response_model=ChecklistDetailResponse,
     summary="체크리스트 항목 상세 조회",
+    description="체크리스트 항목 정보와 첨부 목록을 함께 조회합니다.",
     responses=error_responses(401, 403, 404, 500),
 )
 async def get_checklist_detail(
@@ -324,6 +332,10 @@ async def get_checklist_detail(
     "/disasters/{userDisasterId}/checklist",
     response_model=ChecklistListResponse,
     summary="일자/기간 체크리스트 조회",
+    description=(
+        "date 단일 조회 또는 startDate/endDate 기간 조회를 지원합니다. "
+        "기간 조회 시 날짜별 집계와 전체 달성률을 반환합니다."
+    ),
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def get_checklists(
@@ -401,6 +413,10 @@ async def get_checklists(
     "/disasters/{userDisasterId}/archives",
     response_model=ArchiveListResponse,
     summary="아카이빙 통합 조회",
+    description=(
+        "ALL/MEMO/IMAGE/FILE 타입별 아카이브를 커서 기반으로 조회합니다. "
+        "date를 주면 특정 일자만 필터링합니다."
+    ),
     responses=error_responses(400, 401, 403, 404, 409, 500),
 )
 async def get_archives(

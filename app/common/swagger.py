@@ -24,6 +24,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "재난별 체크리스트 및 첨부(메모/이미지/파일) 관리",
     },
     {
+        "name": "home",
+        "description": "홈 화면 요약, 일일 상태 체크, 오늘의 할 일 조회/제출",
+    },
+    {
         "name": "health",
         "description": "서버 상태 확인",
     },
