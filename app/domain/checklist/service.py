@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import date, datetime
 from urllib.parse import urlparse
 
 from app.common.exceptions import AppException
+from app.config import settings
 from app.domain.checklist.entity import ChecklistItem
 from app.domain.checklist.repository import ChecklistRepository
 
@@ -409,7 +409,7 @@ class ChecklistService:
 ]"""
 
     def _call_gemini(self, prompt: str) -> list[str]:
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = settings.GEMINI_API_KEY
         if not api_key:
             return ["가족 지인에게 안전 연락하기", "파손된 물건 사진 찍어두기", "식수 및 비상식량 확인하기"]
 
@@ -418,7 +418,7 @@ class ChecklistService:
 
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel(
-                "gemini-1.5-flash",
+                "gemini-3.5-flash",
                 generation_config={"response_mime_type": "application/json"},
             )
             response = model.generate_content(prompt)
@@ -430,7 +430,8 @@ class ChecklistService:
             elif len(titles) < 3:
                 titles += ["안전 상태 다시 한번 확인하기"] * (3 - len(titles))
             return titles
-        except Exception:
+        except Exception as e:
+            print(f"[Gemini Error] {type(e).__name__}: {e}")
             return ["가족 지인에게 안전 연락하기", "파손된 물건 사진 찍어두기", "식수 및 비상식량 확인하기"]
 
     def _validate_attachment_type(self, attachment_type: str | None) -> str:

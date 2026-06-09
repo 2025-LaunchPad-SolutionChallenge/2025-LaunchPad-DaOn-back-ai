@@ -285,19 +285,19 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         disaster_type_id = type_row.disaster_type_id
 
         stage_result = await self._session.execute(
-            select(RecoveryStageMasterModel.recovery_stage_id)
+            select(RecoveryStageMasterModel)
             .where(RecoveryStageMasterModel.stage_code == "CHAOS")
             .limit(1)
         )
-        recovery_stage_id = stage_result.scalar_one_or_none()
-        if recovery_stage_id is None:
+        stage_row = stage_result.scalar_one_or_none()
+        if stage_row is None:
             stage_fallback = await self._session.execute(
-                select(RecoveryStageMasterModel.recovery_stage_id).order_by(
+                select(RecoveryStageMasterModel).order_by(
                     RecoveryStageMasterModel.recovery_stage_id.asc()
-                )
+                ).limit(1)
             )
-            recovery_stage_id = stage_fallback.scalar_one_or_none()
-        if recovery_stage_id is None:
+            stage_row = stage_fallback.scalar_one_or_none()
+        if stage_row is None:
             raise AppException(
                 status_code=500,
                 code=500,
@@ -308,7 +308,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         user_disaster = UserDisasterModel(
             user_id=user_id,
             disaster_type_id=int(disaster_type_id),
-            recovery_stage_id=int(recovery_stage_id),
+            disaster_type=type_row,
+            recovery_stage_id=int(stage_row.recovery_stage_id),
+            recovery_stage=stage_row,
             registration_status=RegistrationStatus.ACTIVE,
             recovery_progress=0.0,
         )

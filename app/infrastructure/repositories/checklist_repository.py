@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.common.exceptions import AppException
 from app.domain.checklist.entity import ChecklistItem
@@ -560,13 +560,25 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
         user_id: int,
         user_disaster_id: int,
     ) -> dict[str, object] | None:
-        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        result_row = await self._session.execute(
+            select(UserDisasterModel)
+            .options(joinedload(UserDisasterModel.disaster_type))
+            .where(UserDisasterModel.user_disaster_id == user_disaster_id)
+        )
+        row = result_row.scalar_one_or_none()
         if row is None:
             raise AppException(
                 status_code=404,
                 code=404,
                 message="존재하지 않는 재난입니다.",
                 error_key="DISASTER_NOT_FOUND",
+            )
+        if row.user_id != user_id:
+            raise AppException(
+                status_code=403,
+                code=403,
+                message="본인 재난만 접근할 수 있습니다.",
+                error_key="FORBIDDEN",
             )
         result = await self._session.execute(
             select(DisasterImpactModel)
