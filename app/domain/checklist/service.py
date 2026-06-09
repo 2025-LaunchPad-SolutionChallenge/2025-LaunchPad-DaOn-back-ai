@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urlparse
 
 from app.common.exceptions import AppException
@@ -162,6 +162,142 @@ class ChecklistService:
             user_disaster_id=user_disaster_id,
             checklist_item_id=checklist_item_id,
             attachment_id=attachment_id,
+        )
+
+    async def patch_checklist_status(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        checklist_item_id: int,
+        is_completed: bool | None,
+    ) -> tuple[int, bool, datetime | None]:
+        if is_completed is None:
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="isCompleted가 필요합니다.",
+                error_key="MISSING_REQUIRED_FIELD",
+            )
+        return await self._checklists.patch_checklist_status(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            checklist_item_id=checklist_item_id,
+            completed=is_completed,
+        )
+
+    async def delete_checklist_item(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        checklist_item_id: int,
+    ) -> tuple[int, int]:
+        return await self._checklists.delete_checklist_item(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            checklist_item_id=checklist_item_id,
+        )
+
+    async def get_checklist_detail(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        checklist_item_id: int,
+    ) -> tuple[dict[str, object], list[dict[str, object]]]:
+        return await self._checklists.get_checklist_detail(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            checklist_item_id=checklist_item_id,
+        )
+
+    async def get_checklists_by_date_range(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        date_value: date | None,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> tuple[date, date, list[dict[str, object]]]:
+        if date_value is not None and (start_date is not None or end_date is not None):
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="date와 기간(startDate/endDate)을 동시에 보낼 수 없습니다.",
+                error_key="INVALID_DATE_RANGE",
+            )
+        if date_value is None and (start_date is None or end_date is None):
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="date 또는 startDate/endDate를 전달해야 합니다.",
+                error_key="MISSING_REQUIRED_FIELD",
+            )
+
+        if date_value is not None:
+            resolved_start = date_value
+            resolved_end = date_value
+        else:
+            assert start_date is not None and end_date is not None
+            if start_date > end_date:
+                raise AppException(
+                    status_code=400,
+                    code=400,
+                    message="startDate는 endDate보다 늦을 수 없습니다.",
+                    error_key="INVALID_DATE_RANGE",
+                )
+            if (end_date - start_date).days > 30:
+                raise AppException(
+                    status_code=400,
+                    code=400,
+                    message="조회 범위는 최대 31일입니다.",
+                    error_key="INVALID_DATE_RANGE",
+                )
+            resolved_start = start_date
+            resolved_end = end_date
+
+        rows = await self._checklists.get_checklists_by_date_range(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            start_date=resolved_start,
+            end_date=resolved_end,
+        )
+        return resolved_start, resolved_end, rows
+
+    async def get_archives(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        archive_type: str,
+        date_value: date | None,
+        cursor: str | None,
+        limit: int,
+    ) -> tuple[list[dict[str, object]], str | None, bool]:
+        normalized_type = archive_type.upper()
+        if normalized_type not in {"ALL", "MEMO", "IMAGE", "FILE"}:
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="type은 ALL, MEMO, IMAGE, FILE만 허용됩니다.",
+                error_key="INVALID_ATTACHMENT_TYPE",
+            )
+        if limit < 1 or limit > 50:
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="limit은 1~50 사이여야 합니다.",
+                error_key="INVALID_LIMIT",
+            )
+        return await self._checklists.get_archives(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            archive_type=normalized_type,
+            date_value=date_value,
+            cursor=cursor,
+            limit=limit,
         )
 
     def _validate_attachment_type(self, attachment_type: str | None) -> str:

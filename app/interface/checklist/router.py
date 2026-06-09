@@ -1,24 +1,32 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.common.dependencies import get_checklist_service, get_current_access_payload
 from app.common.exceptions import AppException
 from app.common.swagger import error_responses
 from app.domain.checklist.service import ChecklistService
 from app.interface.checklist.schema import (
+    ArchiveListResponse,
     AttachmentCreateRequest,
     AttachmentMutationResponse,
     AttachmentPatchRequest,
+    ChecklistStatusResponse,
     ChecklistCreateRequest,
+    ChecklistDeleteResponse,
+    ChecklistDetailAttachmentResponse,
+    ChecklistDetailResponse,
+    ChecklistListDayResponse,
+    ChecklistListItemResponse,
+    ChecklistListResponse,
     ChecklistMutationResponse,
     ChecklistPatchRequest,
 )
 
-router = APIRouter(prefix="/disasters", tags=["checklists"])
+router = APIRouter(tags=["checklists"])
 
 
 def _parse_iso_date_or_400(value: str) -> date:
@@ -33,8 +41,22 @@ def _parse_iso_date_or_400(value: str) -> date:
         ) from exc
 
 
+def _parse_query_date_or_400(name: str, value: str | None) -> date | None:
+    if value is None:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise AppException(
+            status_code=400,
+            code=400,
+            message=f"{name} 형식은 YYYY-MM-DD 이어야 합니다.",
+            error_key="INVALID_DATE_FORMAT",
+        ) from exc
+
+
 @router.post(
-    "/{userDisasterId}/checklist",
+    "/disasters/{userDisasterId}/checklist",
     response_model=ChecklistMutationResponse,
     status_code=201,
     summary="체크리스트 항목 추가",
@@ -62,7 +84,7 @@ async def create_checklist_item(
 
 
 @router.patch(
-    "/{userDisasterId}/checklist/{checklistItemId}",
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}",
     response_model=ChecklistMutationResponse,
     summary="체크리스트 항목 수정",
     responses=error_responses(400, 401, 403, 404, 409, 500),
@@ -97,7 +119,7 @@ async def patch_checklist_item(
 
 
 @router.post(
-    "/{userDisasterId}/checklist/{checklistItemId}/attachments",
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}/attachments",
     response_model=AttachmentMutationResponse,
     status_code=201,
     summary="체크리스트 첨부 추가",
@@ -130,7 +152,7 @@ async def create_attachment(
 
 
 @router.patch(
-    "/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}",
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}",
     response_model=AttachmentMutationResponse,
     summary="체크리스트 첨부 수정",
     responses=error_responses(400, 401, 403, 404, 409, 500),
@@ -175,7 +197,7 @@ async def patch_attachment(
 
 
 @router.delete(
-    "/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}",
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}",
     response_model=AttachmentMutationResponse,
     summary="체크리스트 첨부 삭제",
     responses=error_responses(401, 403, 404, 409, 500),
@@ -197,4 +219,212 @@ async def delete_attachment(
     return AttachmentMutationResponse(
         attachmentId=deleted,
         message="첨부가 삭제되었습니다.",
+    )
+
+
+@router.patch(
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}/status",
+    response_model=ChecklistStatusResponse,
+    summary="체크리스트 완료 상태 변경",
+    responses=error_responses(400, 401, 403, 404, 409, 500),
+)
+async def patch_checklist_status(
+    userDisasterId: int,
+    checklistItemId: int,
+    req: dict[str, Any],
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ChecklistStatusResponse:
+    user_id = int(payload["sub"])
+    if "isCompleted" not in req:
+        raise AppException(
+            status_code=400,
+            code=400,
+            message="isCompleted가 필요합니다.",
+            error_key="MISSING_REQUIRED_FIELD",
+        )
+    is_completed = req.get("isCompleted")
+    if not isinstance(is_completed, bool):
+        raise AppException(
+            status_code=400,
+            code=400,
+            message="isCompleted는 boolean 이어야 합니다.",
+            error_key="INVALID_FIELD_TYPE",
+        )
+    checklist_id, completed, completed_at = await checklist_service.patch_checklist_status(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+        checklist_item_id=checklistItemId,
+        is_completed=is_completed,
+    )
+    return ChecklistStatusResponse(
+        checklistItemId=checklist_id,
+        isCompleted=completed,
+        completedAt=completed_at,
+        message="완료 상태가 변경되었습니다.",
+    )
+
+
+@router.delete(
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}",
+    response_model=ChecklistDeleteResponse,
+    summary="체크리스트 항목 삭제",
+    responses=error_responses(401, 403, 404, 500),
+)
+async def delete_checklist(
+    userDisasterId: int,
+    checklistItemId: int,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ChecklistDeleteResponse:
+    user_id = int(payload["sub"])
+    deleted_id, deleted_attachments = await checklist_service.delete_checklist_item(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+        checklist_item_id=checklistItemId,
+    )
+    return ChecklistDeleteResponse(
+        checklistItemId=deleted_id,
+        deletedAttachments=deleted_attachments,
+        message="체크리스트 항목이 삭제되었습니다.",
+    )
+
+
+@router.get(
+    "/disasters/{userDisasterId}/checklist/{checklistItemId}",
+    response_model=ChecklistDetailResponse,
+    summary="체크리스트 항목 상세 조회",
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_checklist_detail(
+    userDisasterId: int,
+    checklistItemId: int,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ChecklistDetailResponse:
+    user_id = int(payload["sub"])
+    checklist, attachments = await checklist_service.get_checklist_detail(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+        checklist_item_id=checklistItemId,
+    )
+    return ChecklistDetailResponse(
+        checklistItemId=int(checklist["checklistId"]),
+        title=str(checklist["title"]),
+        isCompleted=bool(checklist["isCompleted"]),
+        completedAt=checklist["completedAt"],
+        checklistDate=str(checklist["checklistDate"]),
+        priority=int(checklist["priority"]),
+        isAiGenerated=bool(checklist["isAiGenerated"]),
+        attachments=[ChecklistDetailAttachmentResponse(**a) for a in attachments],
+    )
+
+
+@router.get(
+    "/disasters/{userDisasterId}/checklist",
+    response_model=ChecklistListResponse,
+    summary="일자/기간 체크리스트 조회",
+    responses=error_responses(400, 401, 403, 404, 409, 500),
+)
+async def get_checklists(
+    userDisasterId: int,
+    date_value: str | None = Query(None, alias="date"),
+    start_date_value: str | None = Query(None, alias="startDate"),
+    end_date_value: str | None = Query(None, alias="endDate"),
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ChecklistListResponse:
+    user_id = int(payload["sub"])
+    parsed_date = _parse_query_date_or_400("date", date_value)
+    parsed_start = _parse_query_date_or_400("startDate", start_date_value)
+    parsed_end = _parse_query_date_or_400("endDate", end_date_value)
+    resolved_start, resolved_end, rows = await checklist_service.get_checklists_by_date_range(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+        date_value=parsed_date,
+        start_date=parsed_start,
+        end_date=parsed_end,
+    )
+
+    rows_by_date: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        key = str(row["checklistDate"])
+        if key not in rows_by_date:
+            rows_by_date[key] = []
+        rows_by_date[key].append(row)
+
+    days: list[ChecklistListDayResponse] = []
+    total_count = 0
+    completed_count = 0
+    cursor = resolved_start
+    while cursor <= resolved_end:
+        key = cursor.isoformat()
+        day_rows = rows_by_date.get(key, [])
+        items = [
+            ChecklistListItemResponse(
+                checklistItemId=int(row["checklistItemId"]),
+                title=str(row["title"]),
+                isCompleted=bool(row["isCompleted"]),
+                priority=int(row["priority"]),
+                isAiGenerated=bool(row["isAiGenerated"]),
+                attachmentSummary=row["attachmentSummary"],
+            )
+            for row in day_rows
+        ]
+        day_total = len(items)
+        day_completed = sum(1 for row in items if row.isCompleted)
+        total_count += day_total
+        completed_count += day_completed
+        days.append(
+            ChecklistListDayResponse(
+                checklistDate=key,
+                total=day_total,
+                completed=day_completed,
+                items=items,
+            )
+        )
+        cursor += timedelta(days=1)
+
+    completion_rate = 0.0 if total_count == 0 else round((completed_count / total_count) * 100, 1)
+    return ChecklistListResponse(
+        userDisasterId=userDisasterId,
+        range={
+            "startDate": resolved_start.isoformat(),
+            "endDate": resolved_end.isoformat(),
+        },
+        completionRate=completion_rate,
+        days=days,
+    )
+
+
+@router.get(
+    "/disasters/{userDisasterId}/archives",
+    response_model=ArchiveListResponse,
+    summary="아카이빙 통합 조회",
+    responses=error_responses(400, 401, 403, 404, 409, 500),
+)
+async def get_archives(
+    userDisasterId: int,
+    type_value: str = Query("ALL", alias="type"),
+    date_value: str | None = Query(None, alias="date"),
+    cursor: str | None = Query(None),
+    limit: int = Query(20),
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ArchiveListResponse:
+    user_id = int(payload["sub"])
+    parsed_date = _parse_query_date_or_400("date", date_value)
+    items, next_cursor, has_more = await checklist_service.get_archives(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+        archive_type=type_value,
+        date_value=parsed_date,
+        cursor=cursor,
+        limit=limit,
+    )
+    return ArchiveListResponse(
+        userDisasterId=userDisasterId,
+        items=items,
+        nextCursor=next_cursor,
+        hasMore=has_more,
     )

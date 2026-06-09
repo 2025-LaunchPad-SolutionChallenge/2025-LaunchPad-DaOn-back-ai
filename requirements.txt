@@ -1,34 +1,20 @@
-# ── Web Framework ──────────────────────────────
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
-
-# ── Database ───────────────────────────────────
 sqlalchemy==2.0.41
 alembic==1.15.2
 aiomysql==0.2.0
-
-# ── Auth ───────────────────────────────────────
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 firebase-admin==6.8.0
-
-# ── Config / Env ───────────────────────────────
 pydantic==2.11.4
 pydantic-settings==2.9.1
 python-dotenv==1.1.0
-
-# ── File Upload ────────────────────────────────
 python-multipart==0.0.20
 boto3==1.38.9
-
-# ── HTTP Client ────────────────────────────────
 httpx==0.28.1
-
-# ── Utils ──────────────────────────────────────
+apscheduler==3.10.4
 python-dateutil==2.9.0
-
-# ── Dev / Test ─────────────────────────────────
+google-generativeai
 pytest==8.3.5
 pytest-asyncio==0.26.0
-
 greenlet==3.2.2

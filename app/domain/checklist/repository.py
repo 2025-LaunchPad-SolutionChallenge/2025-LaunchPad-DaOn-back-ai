@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, datetime
 
 
 class ChecklistRepository(ABC):
@@ -70,3 +70,53 @@ class ChecklistRepository(ABC):
         checklist_item_id: int,
         attachment_id: int,
     ) -> int: ...
+
+    @abstractmethod
+    async def patch_checklist_status(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        checklist_item_id: int,
+        completed: bool,
+    ) -> tuple[int, bool, datetime | None]: ...
+
+    @abstractmethod
+    async def delete_checklist_item(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        checklist_item_id: int,
+    ) -> tuple[int, int]: ...
+
+    @abstractmethod
+    async def get_checklist_detail(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        checklist_item_id: int,
+    ) -> tuple[dict[str, object], list[dict[str, object]]]: ...
+
+    @abstractmethod
+    async def get_checklists_by_date_range(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        start_date: date,
+        end_date: date,
+    ) -> list[dict[str, object]]: ...
+
+    @abstractmethod
+    async def get_archives(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        archive_type: str,
+        date_value: date | None,
+        cursor: str | None,
+        limit: int,
+    ) -> tuple[list[dict[str, object]], str | None, bool]: ...

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,7 @@ from app.common.exceptions import AppException
 from app.common.swagger import OPENAPI_TAGS, configure_openapi
 from app.config import settings
 from app.firebase import init_firebase
+from app.infrastructure.batch.recovery_labeling import run_recovery_labeling_batch
 
 # ── 라우터 import (도메인별로 추가) ──────────────
 from app.interface.auth.router import router as auth_router
@@ -24,7 +26,20 @@ from app.interface.user.router import router as user_router
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_firebase()
+
+    scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
+    scheduler.add_job(
+        run_recovery_labeling_batch,
+        trigger="cron",
+        hour=0,
+        minute=0,
+        id="recovery_labeling",
+    )
+    scheduler.start()
+
     yield
+
+    scheduler.shutdown()
 
 
 app = FastAPI(

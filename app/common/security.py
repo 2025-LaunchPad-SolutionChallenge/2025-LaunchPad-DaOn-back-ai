@@ -53,11 +53,7 @@ def create_refresh_token(*, user_id: int, jti: str, expires_at: datetime) -> str
 
 
 def decode_access_token_claims(token: str) -> dict:
-    """액세스 JWT 검증 (만료·서명·alg).
-
-    리프레시용 디코더와 구현이 같아 보이지만 역할을 분리해 두었습니다.
-    이후 액세스 전용 검증(`aud`, `iss`, 키 로테이션 등)을 여기만 추가할 수 있습니다.
-    """
+    """액세스 JWT 검증 (만료·서명·alg)."""
     return jwt.decode(
         token,
         settings.JWT_SECRET_KEY,
@@ -66,7 +62,7 @@ def decode_access_token_claims(token: str) -> dict:
 
 
 def decode_refresh_token_claims(token: str) -> dict:
-    """리프레시 JWT 검증 (만료·서명·alg). 갱신 API 등에서 사용."""
+    """리프레시 JWT 검증 (만료·서명·alg)."""
     return jwt.decode(
         token,
         settings.JWT_SECRET_KEY,
@@ -75,7 +71,7 @@ def decode_refresh_token_claims(token: str) -> dict:
 
 
 def decode_refresh_token_for_logout(token: str) -> dict:
-    """로그아웃 전용: 서명·alg는 검증하고 exp는 건너뜀 (만료된 refresh로도 세션 폐기 허용)."""
+    """로그아웃 전용: 서명·alg는 검증하고 exp는 건너뜀."""
     return jwt.decode(
         token,
         settings.JWT_SECRET_KEY,
