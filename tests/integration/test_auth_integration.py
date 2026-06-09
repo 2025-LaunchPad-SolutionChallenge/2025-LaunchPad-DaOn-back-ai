@@ -614,3 +614,126 @@ def test_disaster_forbidden_and_not_found_errors() -> None:
         )
         assert not_found.status_code == 404, not_found.text
         assert not_found.json()["code"] == "DISASTER_NOT_FOUND"
+
+
+def test_checklist_and_attachment_flow() -> None:
+    token = "firebase-ok-checklist-" + secrets.token_hex(6)
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "체크리스트",
+                "birthDate": "1993-03-03",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
+        me = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access}"})
+        user_id = int(me.json()["userId"])
+        ids = _seed_disaster_rows(user_id)
+
+        created = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "보험사 접수 서류 준비",
+                "checklistDate": "2026-07-16",
+                "priority": 1,
+            },
+        )
+        assert created.status_code == 201, created.text
+        checklist_item_id = int(created.json()["checklistItemId"])
+
+        patched = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "보험사 접수 서류 준비 (수정)",
+                "isCompleted": True,
+                "priority": 2,
+            },
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["checklistItemId"] == checklist_item_id
+
+        memo_added = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "attachmentType": "MEMO",
+                "content": "침수 당시 1층 바닥까지 물이 차올랐음.",
+            },
+        )
+        assert memo_added.status_code == 201, memo_added.text
+        memo_id = int(memo_added.json()["attachmentId"])
+
+        file_added = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "attachmentType": "IMAGE",
+                "fileUrl": _firebase_storage_url("damage_photo_01.jpg"),
+                "originalFileName": "damage_photo_01.jpg",
+                "mimeType": "image/jpeg",
+                "fileSize": 204800,
+                "thumbnailUrl": _firebase_storage_url("thumb_damage_photo_01.jpg"),
+            },
+        )
+        assert file_added.status_code == 201, file_added.text
+        file_id = int(file_added.json()["attachmentId"])
+
+        memo_patch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{memo_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"content": "내용을 수정합니다."},
+        )
+        assert memo_patch.status_code == 200, memo_patch.text
+
+        file_patch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{file_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "fileUrl": _firebase_storage_url("new_file.jpg"),
+                "originalFileName": "new_file.jpg",
+                "mimeType": "image/jpeg",
+                "fileSize": 310000,
+                "thumbnailUrl": _firebase_storage_url("thumb_new_file.jpg"),
+            },
+        )
+        assert file_patch.status_code == 200, file_patch.text
+
+        deleted = client.delete(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{file_id}",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["attachmentId"] == file_id
+
+        bad_date = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"title": "x", "checklistDate": "20260716", "priority": 1},
+        )
+        assert bad_date.status_code == 400, bad_date.text
+        assert bad_date.json()["code"] == "INVALID_DATE_FORMAT"
+
+        mismatch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{memo_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"fileUrl": _firebase_storage_url("wrong.jpg")},
+        )
+        assert mismatch.status_code == 400, mismatch.text
+        assert mismatch.json()["code"] == "ATTACHMENT_TYPE_MISMATCH"
+
+        not_active = client.post(
+            f"/api/v1/disasters/{ids['expired']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "종료재난",
+                "checklistDate": "2026-07-16",
+                "priority": 1,
+            },
+        )
+        assert not_active.status_code == 409, not_active.text
+        assert not_active.json()["code"] == "DISASTER_NOT_ACTIVE"

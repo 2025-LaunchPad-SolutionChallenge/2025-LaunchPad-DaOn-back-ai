@@ -20,6 +20,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "재난 목록 조회, 상세 조회, 수정, 종료/보관 처리",
     },
     {
+        "name": "checklists",
+        "description": "재난별 체크리스트 및 첨부(메모/이미지/파일) 관리",
+    },
+    {
         "name": "health",
         "description": "서버 상태 확인",
     },
