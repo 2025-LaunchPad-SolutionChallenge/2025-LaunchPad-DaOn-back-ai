@@ -9,8 +9,6 @@ from app.common.swagger import error_responses
 from app.domain.disaster.entity import DisasterDetail, DisasterListPage
 from app.domain.disaster.service import DisasterService
 from app.interface.disaster.schema import (
-    ContextRequest,
-    ContextResponse,
     DisasterCloseRequest,
     DisasterCloseResponse,
     DisasterDetailResponse,
@@ -236,33 +234,6 @@ async def get_recovery_progress(
         stageCode=detail.recovery_stage.stage_code,
         stageName=detail.recovery_stage.stage_name,
     )
-
-
-@router.post(
-    "/checklists/context",
-    response_model=ContextResponse,
-    summary="체크리스트 컨텍스트 입력",
-    description="온보딩 이후 외출 가능 여부 및 가용 시간을 저장합니다.",
-    responses=error_responses(400, 401, 403, 404, 500),
-)
-async def submit_context(
-    req: ContextRequest,
-    payload: dict[str, Any] = Depends(get_current_access_payload),
-    disaster_service: DisasterService = Depends(get_disaster_service),
-) -> ContextResponse:
-    user_id = int(payload["sub"])
-    await disaster_service.update_disaster(
-        user_id=user_id,
-        user_disaster_id=req.userDisasterId,
-        title=None,
-        occurred_at=None,
-        impact_updates={
-            "can_go_out": req.userCondition.canGoOut,
-            "available_time": req.userCondition.availableTime.value,
-        },
-        detail_updates=None,
-    )
-    return ContextResponse(message="상황 입력 완료")
 
 
 @router.patch(

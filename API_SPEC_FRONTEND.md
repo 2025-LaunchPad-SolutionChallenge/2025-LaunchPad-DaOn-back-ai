@@ -565,13 +565,15 @@ ACTIVE 재난 종료/보관
 
 ## 6) Checklists API
 
-체크리스트 API는 별도 `/checklists` prefix가 아니라, 현재 구현상 `disasters` 하위 경로입니다.
+체크리스트 API는 아래 2개 그룹으로 구성됩니다.
 
 Prefix: `/api/v1/disasters/{userDisasterId}`
 
-추가로 아래 독립 경로도 구현되어 있습니다.
+- 재난별 체크리스트/첨부 CRUD 및 조회 (`/checklist*`, `/archives`)
 
 Prefix: `/api/v1/checklists`
+
+- 공통 컨텍스트 입력 및 AI 생성 (`/context`, `/ai-generate`)
 
 ## `POST /checklists/context`
 

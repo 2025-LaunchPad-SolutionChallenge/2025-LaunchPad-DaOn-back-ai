@@ -154,12 +154,6 @@ class SmokeInhalationEnum(str, Enum):
     SEVERE = "SEVERE"
 
 
-class AvailableTimeEnum(str, Enum):
-    UNDER_ONE_HOUR = "UNDER_ONE_HOUR"
-    ONE_TO_THREE_HOURS = "ONE_TO_THREE_HOURS"
-    ALL_DAY_HALF_DAY = "ALL_DAY_HALF_DAY"
-
-
 class OnboardingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -179,24 +173,6 @@ class OnboardingResponse(BaseModel):
     userDisasterId: int = Field(..., description="생성된 사용자 재난 ID")
     impactId: int = Field(..., description="생성된 재난 영향 ID")
     onboardingRiskLevel: int = Field(..., description="온보딩 위험도(1~3)")
-    message: str = Field(..., description="처리 결과 메시지")
-
-
-class UserConditionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    canGoOut: bool = Field(..., description="외출 가능 여부")
-    availableTime: AvailableTimeEnum = Field(..., description="가용 시간")
-
-
-class ContextRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    userDisasterId: int = Field(..., description="대상 재난 ID")
-    userCondition: UserConditionRequest = Field(..., description="사용자 상태 입력")
-
-
-class ContextResponse(BaseModel):
     message: str = Field(..., description="처리 결과 메시지")
 
 
