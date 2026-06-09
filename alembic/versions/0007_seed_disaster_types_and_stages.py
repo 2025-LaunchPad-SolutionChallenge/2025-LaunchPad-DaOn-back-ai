@@ -28,24 +28,28 @@ _stages = sa.table(
 
 
 def upgrade() -> None:
-    op.bulk_insert(
-        _disaster_types,
-        [
-            {"disaster_code": "FLOOD", "disaster_name": "홍수"},
-            {"disaster_code": "TYPHOON", "disaster_name": "태풍"},
-            {"disaster_code": "EARTHQUAKE", "disaster_name": "지진"},
-            {"disaster_code": "FIRE", "disaster_name": "화재"},
-        ],
+    op.execute(
+        """
+        INSERT INTO disaster_types (disaster_code, disaster_name)
+        VALUES
+            ('FLOOD', '홍수'),
+            ('TYPHOON', '태풍'),
+            ('EARTHQUAKE', '지진'),
+            ('FIRE', '화재')
+        ON DUPLICATE KEY UPDATE disaster_name = VALUES(disaster_name)
+        """
     )
-    op.bulk_insert(
-        _stages,
-        [
-            {"stage_code": "CHAOS", "stage_name": "혼란"},
-            {"stage_code": "STAGNANT", "stage_name": "침체"},
-            {"stage_code": "ATTEMPTING", "stage_name": "시도"},
-            {"stage_code": "STABLE", "stage_name": "안정"},
-            {"stage_code": "RECOVERY_MAINTAINED", "stage_name": "회복 유지"},
-        ],
+    op.execute(
+        """
+        INSERT INTO recovery_stage_masters (stage_code, stage_name)
+        VALUES
+            ('CHAOS', '혼란'),
+            ('STAGNANT', '침체'),
+            ('ATTEMPTING', '시도'),
+            ('STABLE', '안정'),
+            ('RECOVERY_MAINTAINED', '회복 유지')
+        ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name)
+        """
     )
 
 

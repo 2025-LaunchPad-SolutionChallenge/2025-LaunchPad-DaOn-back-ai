@@ -6,6 +6,7 @@ import hashlib
 import secrets
 from collections.abc import Generator, Sequence
 from contextlib import ExitStack, contextmanager
+from datetime import datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -194,6 +195,42 @@ def _seed_disaster_rows(user_id: int) -> dict[str, int]:
             )
 
             return {"active": active_id, "expired": expired_id, "archived": archived_id}
+    finally:
+        engine.dispose()
+
+
+def _ensure_user_setting(user_id: int, user_disaster_id: int) -> None:
+    engine = create_engine(_sync_database_url())
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO user_settings "
+                    "(user_id, allow_push_notification, user__disaster_id, created_at, updated_at) "
+                    "VALUES (:user_id, 1, :user_disaster_id, NOW(), NOW()) "
+                    "ON DUPLICATE KEY UPDATE "
+                    "user__disaster_id = VALUES(user__disaster_id), "
+                    "updated_at = NOW()"
+                ),
+                {"user_id": user_id, "user_disaster_id": user_disaster_id},
+            )
+    finally:
+        engine.dispose()
+
+
+def _rewind_last_residence_attempt(user_id: int, *, minutes: int = 10) -> None:
+    engine = create_engine(_sync_database_url())
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE residence_verification_log "
+                    "SET verified_at = DATE_SUB(NOW(), INTERVAL :minutes MINUTE), "
+                    "updated_at = NOW() "
+                    "WHERE user_id = :user_id"
+                ),
+                {"minutes": minutes, "user_id": user_id},
+            )
     finally:
         engine.dispose()
 
@@ -737,3 +774,227 @@ def test_checklist_and_attachment_flow() -> None:
         )
         assert not_active.status_code == 409, not_active.text
         assert not_active.json()["code"] == "DISASTER_NOT_ACTIVE"
+
+
+def test_residence_home_and_remaining_checklist_apis() -> None:
+    token = "firebase-ok-residence-home-" + secrets.token_hex(6)
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "거주지홈테스트",
+                "birthDate": "1990-10-10",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
+        me = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access}"})
+        user_id = int(me.json()["userId"])
+        ids = _seed_disaster_rows(user_id)
+        _ensure_user_setting(user_id, ids["active"])
+
+        # health API
+        health = client.get("/health")
+        assert health.status_code == 200, health.text
+        assert health.json()["status"] == "ok"
+
+        # residence API
+        initial_residence = client.get(
+            "/api/v1/auth/residence",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert initial_residence.status_code == 200, initial_residence.text
+        assert initial_residence.json()["status"] == "NONE"
+
+        baseline_missing = client.post(
+            "/api/v1/auth/residence/reverify",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "currentLatitude": 37.5705,
+                "currentLongitude": 126.9815,
+                "currentAddress": "서울시 중구",
+            },
+        )
+        assert baseline_missing.status_code == 409, baseline_missing.text
+        assert baseline_missing.json()["code"] == "BASELINE_NOT_FOUND"
+
+        verify = client.post(
+            "/api/v1/auth/residence/verify",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "disasterLatitude": 37.5665,
+                "disasterLongitude": 126.9780,
+                "currentLatitude": 37.5700,
+                "currentLongitude": 126.9820,
+                "currentAddress": "서울시 중구",
+            },
+        )
+        assert verify.status_code == 200, verify.text
+        verified = verify.json()
+        assert verified["status"] == "VERIFIED"
+        assert verified["verified"] is True
+        assert verified["verificationCount"] >= 1
+
+        status = client.get(
+            "/api/v1/auth/residence",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert status.status_code == 200, status.text
+        status_json = status.json()
+        assert status_json["status"] == "VERIFIED"
+        assert status_json["verified"] is True
+        before_count = int(status_json["verificationCount"] or 0)
+
+        cooldown_hit = client.post(
+            "/api/v1/auth/residence/reverify",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "currentLatitude": 37.5705,
+                "currentLongitude": 126.9815,
+                "currentAddress": "서울시 중구",
+            },
+        )
+        assert cooldown_hit.status_code == 429, cooldown_hit.text
+        assert cooldown_hit.json()["code"] == "VERIFY_COOLDOWN"
+
+        _rewind_last_residence_attempt(user_id, minutes=10)
+        reverify = client.post(
+            "/api/v1/auth/residence/reverify",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "currentLatitude": 37.5705,
+                "currentLongitude": 126.9815,
+                "currentAddress": "서울시 중구",
+            },
+        )
+        assert reverify.status_code == 200, reverify.text
+        reverified = reverify.json()
+        assert reverified["status"] == "VERIFIED"
+        assert int(reverified["verificationCount"] or 0) >= before_count
+
+        # home API
+        summary = client.get("/api/v1/home/summary", headers={"Authorization": f"Bearer {access}"})
+        assert summary.status_code == 200, summary.text
+        summary_json = summary.json()
+        assert "userName" in summary_json
+        assert "occurredAt" in summary_json
+
+        daily_lookup_before = client.get(
+            "/api/v1/home/daily-status",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert daily_lookup_before.status_code == 200, daily_lookup_before.text
+        assert daily_lookup_before.json()["checked"] is False
+
+        daily_submit = client.post(
+            "/api/v1/home/daily-status",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "emotionScore": 2,
+                "energyScore": 1,
+                "activityScore": 1,
+                "recoveryScore": 1,
+                "needScore": 0,
+            },
+        )
+        assert daily_submit.status_code == 200, daily_submit.text
+        assert daily_submit.json()["totalScore"] == 5
+
+        daily_submit_again = client.post(
+            "/api/v1/home/daily-status",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "emotionScore": 2,
+                "energyScore": 1,
+                "activityScore": 1,
+                "recoveryScore": 1,
+                "needScore": 0,
+            },
+        )
+        assert daily_submit_again.status_code == 409, daily_submit_again.text
+
+        daily_lookup_after = client.get(
+            "/api/v1/home/daily-status",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert daily_lookup_after.status_code == 200, daily_lookup_after.text
+        assert daily_lookup_after.json()["checked"] is True
+
+        # checklist remaining APIs
+        today = datetime.now().date().isoformat()
+        created_ids: list[int] = []
+        for i in range(4):
+            created = client.post(
+                f"/api/v1/disasters/{ids['active']}/checklist",
+                headers={"Authorization": f"Bearer {access}"},
+                json={
+                    "title": f"오늘 할 일 {i + 1}",
+                    "checklistDate": today,
+                    "priority": i + 1,
+                },
+            )
+            assert created.status_code == 201, created.text
+            created_ids.append(int(created.json()["checklistItemId"]))
+
+        status_patch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{created_ids[0]}/status",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"isCompleted": True},
+        )
+        assert status_patch.status_code == 200, status_patch.text
+        assert status_patch.json()["isCompleted"] is True
+
+        detail = client.get(
+            f"/api/v1/disasters/{ids['active']}/checklist/{created_ids[0]}",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["checklistItemId"] == created_ids[0]
+
+        by_date = client.get(
+            f"/api/v1/disasters/{ids['active']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            params={"date": today},
+        )
+        assert by_date.status_code == 200, by_date.text
+        assert by_date.json()["range"]["startDate"] == today
+
+        tomorrow = (datetime.now().date() + timedelta(days=1)).isoformat()
+        by_range = client.get(
+            f"/api/v1/disasters/{ids['active']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            params={"startDate": today, "endDate": tomorrow},
+        )
+        assert by_range.status_code == 200, by_range.text
+        assert by_range.json()["range"]["endDate"] == tomorrow
+
+        preview = client.get("/api/v1/home/today-tasks", headers={"Authorization": f"Bearer {access}"})
+        assert preview.status_code == 200, preview.text
+        assert preview.json()["totalCount"] == 3
+
+        full = client.get("/api/v1/home/today-tasks/full", headers={"Authorization": f"Bearer {access}"})
+        assert full.status_code == 200, full.text
+        assert full.json()["totalCount"] >= 4
+
+        memo_added = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist/{created_ids[0]}/attachments",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"attachmentType": "MEMO", "content": "아카이브 테스트"},
+        )
+        assert memo_added.status_code == 201, memo_added.text
+
+        archives = client.get(
+            f"/api/v1/disasters/{ids['active']}/archives",
+            headers={"Authorization": f"Bearer {access}"},
+            params={"type": "MEMO", "date": today, "limit": 20},
+        )
+        assert archives.status_code == 200, archives.text
+        assert isinstance(archives.json()["items"], list)
+
+        deleted = client.delete(
+            f"/api/v1/disasters/{ids['active']}/checklist/{created_ids[0]}",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["checklistItemId"] == created_ids[0]
