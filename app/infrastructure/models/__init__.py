@@ -43,6 +43,10 @@ from app.infrastructure.models.recovery_model import (
     RecoveryStageMasterModel,
 )
 from app.infrastructure.models.refresh_token_session_model import RefreshTokenSessionModel
+from app.infrastructure.models.residence_verification_model import (
+    ResidenceVerificationLogModel,
+    ResidenceVerificationModel,
+)
 
 # ── Checklist 도메인 ─────────────────────────────────────────
 from app.infrastructure.models.checklist_model import (
@@ -67,6 +71,8 @@ __all__ = [
     "UserResidenceModel",
     "UserSettingModel",
     "RefreshTokenSessionModel",
+    "ResidenceVerificationModel",
+    "ResidenceVerificationLogModel",
     # ── User enums ───────────────────────────────────────────
     "VerificationStatus",
     "ProviderType",

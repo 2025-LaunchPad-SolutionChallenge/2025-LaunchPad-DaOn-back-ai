@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # ── Gemini ────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
 
+    # ── Residence Verification ────────────────────────────────────────────
+    RESIDENCE_VERIFY_TTL_DAYS: int = 30
+    RESIDENCE_VERIFY_COOLDOWN_MIN: int = 5
+    RESIDENCE_VERIFY_RADIUS_KM: float = 10.0
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

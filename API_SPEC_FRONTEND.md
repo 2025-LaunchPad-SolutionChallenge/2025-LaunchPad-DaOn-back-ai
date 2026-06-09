@@ -157,6 +157,134 @@ Prefix: `/api/v1/auth`
 }
 ```
 
+## `POST /auth/residence/verify`
+
+거주지 최초 인증. 재난 기준점 + 현재 위치를 받아 거리 검증합니다.
+
+요청:
+
+```json
+{
+  "disasterLatitude": 37.5665,
+  "disasterLongitude": 126.978,
+  "currentLatitude": 37.57,
+  "currentLongitude": 126.982,
+  "currentAddress": "서울특별시 중구 ..."
+}
+```
+
+응답(성공):
+
+```json
+{
+  "status": "VERIFIED",
+  "verified": true,
+  "distanceKm": 0.52,
+  "thresholdKm": 10.0,
+  "verificationCount": 1,
+  "verifiedAt": "2026-02-24T09:41:00Z",
+  "expiresAt": "2026-03-26T09:41:00Z",
+  "message": "거주지 인증이 완료되었습니다."
+}
+```
+
+응답(거리 초과):
+
+```json
+{
+  "status": "NONE",
+  "verified": false,
+  "distanceKm": 14.3,
+  "thresholdKm": 10.0,
+  "message": "재난 발생 위치로부터 10km를 벗어나 인증할 수 없습니다."
+}
+```
+
+주의:
+
+- 기준점은 최초 1회만 저장됩니다. 이후에는 요청의 `disasterLatitude/Longitude`를 보내도 저장된 기준점을 사용합니다.
+- 인증 유효기간은 `RESIDENCE_VERIFY_TTL_DAYS`(기본 30일), 임계 반경은 `RESIDENCE_VERIFY_RADIUS_KM`(기본 10km)입니다.
+- 쿨다운(`RESIDENCE_VERIFY_COOLDOWN_MIN`, 기본 5분) 내 재시도 시 `429 VERIFY_COOLDOWN` + `Retry-After` 헤더가 내려옵니다.
+
+## `POST /auth/residence/reverify`
+
+거주지 재인증. 현재 위치만 보내면 저장된 기준점과 거리 재검증합니다.
+
+요청:
+
+```json
+{
+  "currentLatitude": 37.5705,
+  "currentLongitude": 126.9815,
+  "currentAddress": "서울특별시 중구 ..."
+}
+```
+
+응답(성공):
+
+```json
+{
+  "status": "VERIFIED",
+  "verified": true,
+  "distanceKm": 0.48,
+  "thresholdKm": 10.0,
+  "verificationCount": 3,
+  "verifiedAt": "2026-03-20T11:00:00Z",
+  "expiresAt": "2026-04-19T11:00:00Z",
+  "message": "거주지 재인증이 완료되었습니다."
+}
+```
+
+에러:
+
+- `409 BASELINE_NOT_FOUND`: 최초 인증 전 재인증 시도
+- `429 VERIFY_COOLDOWN`: 쿨다운 내 재시도
+
+## `GET /auth/residence`
+
+거주지 인증 상태 조회
+
+응답(유효):
+
+```json
+{
+  "status": "VERIFIED",
+  "verified": true,
+  "distanceKm": 0.48,
+  "thresholdKm": 10.0,
+  "verificationCount": 3,
+  "verifiedAt": "2026-03-20T11:00:00Z",
+  "expiresAt": "2026-04-19T11:00:00Z",
+  "daysUntilExpiry": 30
+}
+```
+
+응답(만료):
+
+```json
+{
+  "status": "EXPIRED",
+  "verified": false,
+  "distanceKm": 0.48,
+  "thresholdKm": 10.0,
+  "verificationCount": 3,
+  "verifiedAt": "2026-02-24T09:41:00Z",
+  "expiresAt": "2026-03-26T09:41:00Z",
+  "daysUntilExpiry": 0,
+  "message": "거주지 인증이 만료되었습니다. 재인증이 필요합니다."
+}
+```
+
+응답(이력 없음):
+
+```json
+{
+  "status": "NONE",
+  "verified": false,
+  "message": "거주지 인증 내역이 없습니다."
+}
+```
+
 ---
 
 ## 4) Users API
@@ -549,7 +677,7 @@ Prefix: `/api/v1/disasters/{userDisasterId}`
 
 ---
 
-## 7) Home API
+## 6) Home API
 
 Prefix: `/api/v1/home`
 
@@ -669,7 +797,7 @@ Prefix: `/api/v1/home`
 
 ---
 
-## 8) 프론트 구현 시 주의사항
+## 7) 프론트 구현 시 주의사항
 
 - 체크리스트 API 경로는 현재 `/checklists/*`가 아니라 `/disasters/{userDisasterId}/checklist*` 입니다.
 - Home API는 camelCase 응답(`todayTotalTasks`)입니다.
@@ -680,7 +808,7 @@ Prefix: `/api/v1/home`
 
 ---
 
-## 9) 빠른 테스트 순서 (권장)
+## 8) 빠른 테스트 순서 (권장)
 
 1. `POST /api/v1/auth/login`
 2. 받은 `accessToken`으로 Authorization 헤더 세팅

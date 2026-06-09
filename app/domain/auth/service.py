@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from math import asin, cos, radians, sin, sqrt
 
 from firebase_admin.exceptions import FirebaseError
 from jose.exceptions import ExpiredSignatureError, JWTError
@@ -15,7 +16,7 @@ from app.common.security import (
     verify_firebase_id_token,
 )
 from app.config import settings
-from app.domain.auth.entity import AuthTokensBundle
+from app.domain.auth.entity import AuthTokensBundle, ResidenceVerificationResult
 from app.domain.auth.repository import AuthRepository
 from app.domain.user.entity import User
 from app.domain.user.repository import UserRepository
@@ -33,6 +34,101 @@ class AuthService:
         refresh = create_refresh_token(user_id=user.id, jti=jti, expires_at=expires_at)
         await self._auth.persist_refresh_token(user.id, jti, expires_at)
         return access, refresh
+
+    @staticmethod
+    def _validate_coordinate(latitude: float, longitude: float) -> None:
+        if latitude < -90 or latitude > 90 or longitude < -180 or longitude > 180:
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="위경도 범위가 올바르지 않습니다.",
+                error_key="INVALID_COORDINATE",
+            )
+
+    @staticmethod
+    def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+        rlat1 = radians(lat1)
+        rlng1 = radians(lng1)
+        rlat2 = radians(lat2)
+        rlng2 = radians(lng2)
+        dlat = rlat2 - rlat1
+        dlng = rlng2 - rlng1
+        a = sin(dlat / 2) ** 2 + cos(rlat1) * cos(rlat2) * sin(dlng / 2) ** 2
+        c = 2 * asin(sqrt(a))
+        return 6371.0 * c
+
+    @staticmethod
+    def _utc_now_naive() -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    async def _check_verify_cooldown(self, user_id: int, now: datetime) -> None:
+        last_attempt = await self._auth.get_last_verified_attempt_at(user_id)
+        if last_attempt is None:
+            return
+        cooldown_seconds = settings.RESIDENCE_VERIFY_COOLDOWN_MIN * 60
+        elapsed = (now - last_attempt).total_seconds()
+        if elapsed >= cooldown_seconds:
+            return
+
+        retry_after = int(cooldown_seconds - elapsed)
+        if retry_after < 1:
+            retry_after = 1
+        raise AppException(
+            status_code=429,
+            code=429,
+            message=f"{settings.RESIDENCE_VERIFY_COOLDOWN_MIN}분 내 재시도할 수 없습니다.",
+            error_key="VERIFY_COOLDOWN",
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    @staticmethod
+    def _format_status_response(
+        row: ResidenceVerificationResult | None,
+        *,
+        now: datetime,
+    ) -> ResidenceVerificationResult:
+        if row is None:
+            return ResidenceVerificationResult(
+                status="NONE",
+                verified=False,
+                distance_km=None,
+                threshold_km=None,
+                verification_count=None,
+                verified_at=None,
+                expires_at=None,
+                days_until_expiry=None,
+                message="거주지 인증 내역이 없습니다.",
+            )
+
+        if row.expires_at is not None and row.expires_at < now:
+            return ResidenceVerificationResult(
+                status="EXPIRED",
+                verified=False,
+                distance_km=row.distance_km,
+                threshold_km=row.threshold_km,
+                verification_count=row.verification_count,
+                verified_at=row.verified_at,
+                expires_at=row.expires_at,
+                days_until_expiry=0,
+                message="거주지 인증이 만료되었습니다. 재인증이 필요합니다.",
+            )
+
+        days_left = None
+        if row.expires_at is not None:
+            delta = row.expires_at - now
+            days_left = max(0, int(delta.total_seconds() // 86400))
+
+        return ResidenceVerificationResult(
+            status="VERIFIED",
+            verified=True,
+            distance_km=row.distance_km,
+            threshold_km=row.threshold_km,
+            verification_count=row.verification_count,
+            verified_at=row.verified_at,
+            expires_at=row.expires_at,
+            days_until_expiry=days_left,
+            message=None,
+        )
 
     async def register(
         self,
@@ -321,3 +417,185 @@ class AuthService:
 
         await self._auth.revoke_all_refresh_sessions_by_user(access_user_id)
         await self._users.delete(access_user_id)
+
+    async def verify_residence(
+        self,
+        *,
+        user_id: int,
+        disaster_latitude: float,
+        disaster_longitude: float,
+        current_latitude: float,
+        current_longitude: float,
+        current_address: str | None,
+    ) -> ResidenceVerificationResult:
+        if not await self._auth.get_user_exists(user_id):
+            raise AppException(
+                status_code=401,
+                code=401,
+                message="인증 정보가 유효하지 않습니다.",
+                error_key="UNAUTHORIZED",
+            )
+
+        self._validate_coordinate(disaster_latitude, disaster_longitude)
+        self._validate_coordinate(current_latitude, current_longitude)
+
+        now = self._utc_now_naive()
+        await self._check_verify_cooldown(user_id, now)
+
+        baseline = await self._auth.get_residence_baseline(user_id)
+        if baseline is not None:
+            disaster_latitude, disaster_longitude = baseline
+
+        distance_km = self._haversine_km(
+            disaster_latitude,
+            disaster_longitude,
+            current_latitude,
+            current_longitude,
+        )
+        threshold_km = settings.RESIDENCE_VERIFY_RADIUS_KM
+        if distance_km > threshold_km:
+            await self._auth.log_residence_attempt(
+                user_id=user_id,
+                current_latitude=current_latitude,
+                current_longitude=current_longitude,
+                distance_km=distance_km,
+                is_success=False,
+                now=now,
+            )
+            return ResidenceVerificationResult(
+                status="NONE",
+                verified=False,
+                distance_km=distance_km,
+                threshold_km=threshold_km,
+                verification_count=None,
+                verified_at=None,
+                expires_at=None,
+                days_until_expiry=None,
+                message=f"재난 발생 위치로부터 {int(threshold_km)}km를 벗어나 인증할 수 없습니다.",
+            )
+
+        expires_at = now + timedelta(days=settings.RESIDENCE_VERIFY_TTL_DAYS)
+        result = await self._auth.verify_residence_first(
+            user_id=user_id,
+            disaster_latitude=disaster_latitude,
+            disaster_longitude=disaster_longitude,
+            current_latitude=current_latitude,
+            current_longitude=current_longitude,
+            current_address=current_address,
+            distance_km=distance_km,
+            threshold_km=threshold_km,
+            now=now,
+            expires_at=expires_at,
+        )
+        return ResidenceVerificationResult(
+            status="VERIFIED",
+            verified=True,
+            distance_km=result.distance_km,
+            threshold_km=result.threshold_km,
+            verification_count=result.verification_count,
+            verified_at=result.verified_at,
+            expires_at=result.expires_at,
+            days_until_expiry=None,
+            message="거주지 인증이 완료되었습니다.",
+        )
+
+    async def reverify_residence(
+        self,
+        *,
+        user_id: int,
+        current_latitude: float,
+        current_longitude: float,
+        current_address: str | None,
+    ) -> ResidenceVerificationResult:
+        if not await self._auth.get_user_exists(user_id):
+            raise AppException(
+                status_code=401,
+                code=401,
+                message="인증 정보가 유효하지 않습니다.",
+                error_key="UNAUTHORIZED",
+            )
+
+        self._validate_coordinate(current_latitude, current_longitude)
+        now = self._utc_now_naive()
+        await self._check_verify_cooldown(user_id, now)
+
+        baseline = await self._auth.get_residence_baseline(user_id)
+        if baseline is None:
+            raise AppException(
+                status_code=409,
+                code=409,
+                message="최초 거주지 인증이 필요합니다.",
+                error_key="BASELINE_NOT_FOUND",
+            )
+
+        disaster_latitude, disaster_longitude = baseline
+        distance_km = self._haversine_km(
+            disaster_latitude,
+            disaster_longitude,
+            current_latitude,
+            current_longitude,
+        )
+        threshold_km = settings.RESIDENCE_VERIFY_RADIUS_KM
+
+        if distance_km > threshold_km:
+            await self._auth.log_residence_attempt(
+                user_id=user_id,
+                current_latitude=current_latitude,
+                current_longitude=current_longitude,
+                distance_km=distance_km,
+                is_success=False,
+                now=now,
+            )
+            return ResidenceVerificationResult(
+                status="NONE",
+                verified=False,
+                distance_km=distance_km,
+                threshold_km=threshold_km,
+                verification_count=None,
+                verified_at=None,
+                expires_at=None,
+                days_until_expiry=None,
+                message=f"재난 발생 위치로부터 {int(threshold_km)}km를 벗어나 인증할 수 없습니다.",
+            )
+
+        expires_at = now + timedelta(days=settings.RESIDENCE_VERIFY_TTL_DAYS)
+        result = await self._auth.verify_residence_re(
+            user_id=user_id,
+            current_latitude=current_latitude,
+            current_longitude=current_longitude,
+            current_address=current_address,
+            distance_km=distance_km,
+            threshold_km=threshold_km,
+            now=now,
+            expires_at=expires_at,
+        )
+        if result is None:
+            raise AppException(
+                status_code=409,
+                code=409,
+                message="최초 거주지 인증이 필요합니다.",
+                error_key="BASELINE_NOT_FOUND",
+            )
+
+        return ResidenceVerificationResult(
+            status="VERIFIED",
+            verified=True,
+            distance_km=result.distance_km,
+            threshold_km=result.threshold_km,
+            verification_count=result.verification_count,
+            verified_at=result.verified_at,
+            expires_at=result.expires_at,
+            days_until_expiry=None,
+            message="거주지 재인증이 완료되었습니다.",
+        )
+
+    async def get_residence_verification(self, *, user_id: int) -> ResidenceVerificationResult:
+        if not await self._auth.get_user_exists(user_id):
+            raise AppException(
+                status_code=401,
+                code=401,
+                message="인증 정보가 유효하지 않습니다.",
+                error_key="UNAUTHORIZED",
+            )
+        row = await self._auth.get_residence_verification(user_id)
+        return self._format_status_response(row, now=self._utc_now_naive())

@@ -9,8 +9,9 @@ class AppException(HTTPException):
         message: str,
         *,
         error_key: str | None = None,
+        headers: dict[str, str] | None = None,
     ):
-        super().__init__(status_code=status_code, detail=message)
+        super().__init__(status_code=status_code, detail=message, headers=headers)
         self.code = code
         self.message = message
         self.error_key = error_key

@@ -22,3 +22,16 @@ class AuthTokensBundle:
     access_token: str
     refresh_token: str
     is_new_user: bool
+
+
+@dataclass(frozen=True)
+class ResidenceVerificationResult:
+    status: str
+    verified: bool
+    distance_km: float | None
+    threshold_km: float | None
+    verification_count: int | None
+    verified_at: datetime | None
+    expires_at: datetime | None
+    days_until_expiry: int | None
+    message: str | None

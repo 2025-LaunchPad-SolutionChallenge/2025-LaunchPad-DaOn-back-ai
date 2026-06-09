@@ -94,6 +94,37 @@ async def validation_exception_handler(
         errors = exc.errors()
         loc = [str(x) for x in errors[0].get("loc", ())] if errors else []
 
+        if "/residence/" in path:
+            first_error = errors[0] if errors else {}
+            error_type = str(first_error.get("type", ""))
+            loc_joined = " ".join(loc)
+            if "Latitude" in loc_joined or "Longitude" in loc_joined:
+                if "missing" in error_type:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "code": "MISSING_REQUIRED_FIELD",
+                            "message": "좌표 필드는 필수입니다.",
+                            "data": None,
+                        },
+                    )
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "code": "INVALID_COORDINATE",
+                        "message": "위경도 값 형식이 올바르지 않습니다.",
+                        "data": None,
+                    },
+                )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "code": "MISSING_REQUIRED_FIELD",
+                    "message": "필수 입력값이 누락되었습니다.",
+                    "data": None,
+                },
+            )
+
         if "refreshToken" in loc:
             return JSONResponse(
                 status_code=400,
