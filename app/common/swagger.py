@@ -71,6 +71,7 @@ COMMON_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: _error_response(403, "접근 권한 없음"),
     404: _error_response(404, "리소스를 찾을 수 없음"),
     409: _error_response(409, "리소스 충돌 (중복 등)"),
+    429: _error_response(429, "요청 제한 초과 (쿨다운/레이트 리밋)"),
     422: _error_response(422, "요청 본문 검증 실패"),
     500: _error_response(500, "서버 내부 오류"),
 }
