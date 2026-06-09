@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import date, datetime
 
+from app.domain.checklist.entity import ChecklistItem
+
 
 class ChecklistRepository(ABC):
     @abstractmethod
@@ -120,3 +122,19 @@ class ChecklistRepository(ABC):
         cursor: str | None,
         limit: int,
     ) -> tuple[list[dict[str, object]], str | None, bool]: ...
+
+    @abstractmethod
+    async def save_items(self, items: list[ChecklistItem]) -> list[ChecklistItem]: ...
+
+    @abstractmethod
+    async def get_impact_full(self, *, user_id: int, user_disaster_id: int) -> dict[str, object] | None: ...
+
+    @abstractmethod
+    async def update_context(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        can_go_out: bool,
+        available_time: str,
+    ) -> None: ...

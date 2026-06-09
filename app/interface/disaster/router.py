@@ -9,6 +9,8 @@ from app.common.swagger import error_responses
 from app.domain.disaster.entity import DisasterDetail, DisasterListPage
 from app.domain.disaster.service import DisasterService
 from app.interface.disaster.schema import (
+    ContextRequest,
+    ContextResponse,
     DisasterCloseRequest,
     DisasterCloseResponse,
     DisasterDetailResponse,
@@ -18,6 +20,12 @@ from app.interface.disaster.schema import (
     DisasterPatchRequest,
     DisasterPatchResponse,
     DisasterTypeResponse,
+    OnboardingRequest,
+    OnboardingResponse,
+    RecoveryGraphPointResponse,
+    RecoveryGraphResponse,
+    RecoveryProgressResponse,
+    RecoveryStageDetailResponse,
     RecoveryStageResponse,
 )
 
@@ -99,6 +107,41 @@ async def list_disasters(
     return _to_list_response(page_data)
 
 
+@router.post(
+    "/onboarding",
+    response_model=OnboardingResponse,
+    status_code=201,
+    summary="재난 온보딩 등록",
+    description="초기 재난 영향 정보를 등록하고 사용자 재난을 생성합니다.",
+    responses=error_responses(400, 401, 500),
+)
+async def submit_onboarding(
+    req: OnboardingRequest,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    disaster_service: DisasterService = Depends(get_disaster_service),
+) -> OnboardingResponse:
+    user_id = int(payload["sub"])
+    user_disaster_id, impact_id, onboarding_risk_level = await disaster_service.submit_onboarding(
+        user_id=user_id,
+        disaster_type=req.disasterType.value,
+        safety_status=req.safetyStatus.value if req.safetyStatus else None,
+        residence_status=req.residenceStatus.value,
+        injury_level=req.injuryLevel.value,
+        damages=req.damages,
+        flood_level=req.floodLevel.value if req.floodLevel else None,
+        water_drain_status=req.waterDrainStatus.value if req.waterDrainStatus else None,
+        aftershock_feeling=req.aftershockFeeling.value if req.aftershockFeeling else None,
+        fire_damage_scope=req.fireDamageScope.value if req.fireDamageScope else None,
+        smoke_inhalation=req.smokeInhalation.value if req.smokeInhalation else None,
+    )
+    return OnboardingResponse(
+        userDisasterId=user_disaster_id,
+        impactId=impact_id,
+        onboardingRiskLevel=onboarding_risk_level,
+        message="피해 상황이 등록되었습니다",
+    )
+
+
 @router.get(
     "/{userDisasterId}",
     response_model=DisasterDetailResponse,
@@ -117,6 +160,109 @@ async def get_disaster_detail(
         user_disaster_id=userDisasterId,
     )
     return _to_detail_response(detail)
+
+
+@router.get(
+    "/{userDisasterId}/recovery/stage",
+    response_model=RecoveryStageDetailResponse,
+    summary="회복 단계 조회",
+    description="해당 재난의 최신 회복 단계를 조회합니다.",
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_recovery_stage(
+    userDisasterId: int,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    disaster_service: DisasterService = Depends(get_disaster_service),
+) -> RecoveryStageDetailResponse:
+    user_id = int(payload["sub"])
+    stage_id, stage_code, stage_name, description = await disaster_service.get_recovery_stage_detail(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+    )
+    return RecoveryStageDetailResponse(
+        stageId=stage_id,
+        stageCode=stage_code,
+        stageName=stage_name,
+        description=description,
+    )
+
+
+@router.get(
+    "/{userDisasterId}/recovery-graph",
+    response_model=RecoveryGraphResponse,
+    summary="회복 그래프 조회",
+    description="회복 출력 이력을 날짜 순으로 반환합니다.",
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_recovery_graph(
+    userDisasterId: int,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    disaster_service: DisasterService = Depends(get_disaster_service),
+) -> RecoveryGraphResponse:
+    user_id = int(payload["sub"])
+    points = await disaster_service.get_recovery_graph_points(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+    )
+    return RecoveryGraphResponse(
+        userDisasterId=userDisasterId,
+        points=[
+            RecoveryGraphPointResponse(date=d, stageCode=code, stageName=name)
+            for d, code, name in points
+        ],
+    )
+
+
+@router.get(
+    "/{userDisasterId}/recovery/progress",
+    response_model=RecoveryProgressResponse,
+    summary="회복 진행률 조회",
+    description="재난의 현재 회복 진행률과 단계 정보를 반환합니다.",
+    responses=error_responses(401, 403, 404, 500),
+)
+async def get_recovery_progress(
+    userDisasterId: int,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    disaster_service: DisasterService = Depends(get_disaster_service),
+) -> RecoveryProgressResponse:
+    user_id = int(payload["sub"])
+    detail = await disaster_service.get_disaster_detail(
+        user_id=user_id,
+        user_disaster_id=userDisasterId,
+    )
+    return RecoveryProgressResponse(
+        userDisasterId=userDisasterId,
+        recoveryProgress=detail.recovery_progress,
+        stageCode=detail.recovery_stage.stage_code,
+        stageName=detail.recovery_stage.stage_name,
+    )
+
+
+@router.post(
+    "/checklists/context",
+    response_model=ContextResponse,
+    summary="체크리스트 컨텍스트 입력",
+    description="온보딩 이후 외출 가능 여부 및 가용 시간을 저장합니다.",
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+async def submit_context(
+    req: ContextRequest,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    disaster_service: DisasterService = Depends(get_disaster_service),
+) -> ContextResponse:
+    user_id = int(payload["sub"])
+    await disaster_service.update_disaster(
+        user_id=user_id,
+        user_disaster_id=req.userDisasterId,
+        title=None,
+        occurred_at=None,
+        impact_updates={
+            "can_go_out": req.userCondition.canGoOut,
+            "available_time": req.userCondition.availableTime.value,
+        },
+        detail_updates=None,
+    )
+    return ContextResponse(message="상황 입력 완료")
 
 
 @router.patch(

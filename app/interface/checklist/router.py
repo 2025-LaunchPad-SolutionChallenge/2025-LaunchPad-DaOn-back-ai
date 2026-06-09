@@ -14,6 +14,10 @@ from app.interface.checklist.schema import (
     AttachmentCreateRequest,
     AttachmentMutationResponse,
     AttachmentPatchRequest,
+    ChecklistContextRequest,
+    ChecklistContextResponse,
+    ChecklistGenerateRequest,
+    ChecklistGenerateResponse,
     ChecklistStatusResponse,
     ChecklistCreateRequest,
     ChecklistDeleteResponse,
@@ -24,6 +28,7 @@ from app.interface.checklist.schema import (
     ChecklistListResponse,
     ChecklistMutationResponse,
     ChecklistPatchRequest,
+    GeneratedItemInfo,
 )
 
 router = APIRouter(tags=["checklists"])
@@ -53,6 +58,58 @@ def _parse_query_date_or_400(name: str, value: str | None) -> date | None:
             message=f"{name} 형식은 YYYY-MM-DD 이어야 합니다.",
             error_key="INVALID_DATE_FORMAT",
         ) from exc
+
+
+@router.post(
+    "/checklists/context",
+    response_model=ChecklistContextResponse,
+    summary="체크리스트 컨텍스트 업데이트",
+    description="온보딩 시 생성된 재난 영향 정보의 외출 가능 여부/가용 시간을 업데이트합니다.",
+    responses=error_responses(400, 401, 403, 404, 500),
+)
+async def submit_checklist_context(
+    req: ChecklistContextRequest,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ChecklistContextResponse:
+    user_id = int(payload["sub"])
+    await checklist_service.update_context(
+        user_id=user_id,
+        user_disaster_id=req.userDisasterId,
+        can_go_out=req.userCondition.canGoOut,
+        available_time=req.userCondition.availableTime,
+    )
+    return ChecklistContextResponse(message="상황 입력 완료")
+
+
+@router.post(
+    "/checklists/ai-generate",
+    response_model=ChecklistGenerateResponse,
+    summary="AI 체크리스트 생성",
+    description="재난 영향 정보를 바탕으로 지정 날짜의 AI 체크리스트 3개를 생성합니다.",
+    responses=error_responses(400, 401, 403, 404, 409, 500),
+)
+async def generate_ai_checklist(
+    req: ChecklistGenerateRequest,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> ChecklistGenerateResponse:
+    user_id = int(payload["sub"])
+    generated = await checklist_service.generate_ai_checklist(
+        user_id=user_id,
+        user_disaster_id=req.userDisasterId,
+        target_date=req.targetDate,
+    )
+    return ChecklistGenerateResponse(
+        items=[
+            GeneratedItemInfo(
+                checklistItemId=item.checklist_item_id or 0,
+                title=item.title,
+                itemSourceType=item.item_source_type,
+            )
+            for item in generated
+        ]
+    )
 
 
 @router.post(

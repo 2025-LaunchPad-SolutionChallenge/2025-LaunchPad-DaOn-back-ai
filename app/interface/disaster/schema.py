@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import date as date_type
 from datetime import datetime
+from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -93,3 +95,131 @@ class DisasterCloseResponse(BaseModel):
     status: str
     endedAt: datetime
     message: str
+
+
+class DisasterTypeEnum(str, Enum):
+    FLOOD = "FLOOD"
+    TYPHOON = "TYPHOON"
+    EARTHQUAKE = "EARTHQUAKE"
+    FIRE = "FIRE"
+
+
+class SafetyStatusEnum(str, Enum):
+    SAFE = "SAFE"
+    MINOR = "MINOR"
+    DAMAGED = "DAMAGED"
+    EMERGENCY = "EMERGENCY"
+
+
+class ResidenceStatusEnum(str, Enum):
+    LIVABLE = "LIVABLE"
+    PARTIAL_DAMAGE = "PARTIAL_DAMAGE"
+    UNLIVABLE = "UNLIVABLE"
+
+
+class InjuryLevelEnum(str, Enum):
+    NONE = "NONE"
+    MINOR = "MINOR"
+    SEVERE = "SEVERE"
+
+
+class FloodLevelEnum(str, Enum):
+    NONE = "NONE"
+    FRONT_YARD = "FRONT_YARD"
+    FIRST_FLOOR = "FIRST_FLOOR"
+    INSIDE_HOME = "INSIDE_HOME"
+
+
+class WaterDrainStatusEnum(str, Enum):
+    STILL_PRESENT = "STILL_PRESENT"
+    PARTIAL_DRAINED = "PARTIAL_DRAINED"
+    MOSTLY_DRAINED = "MOSTLY_DRAINED"
+
+
+class AftershockFeelingEnum(str, Enum):
+    NONE = "NONE"
+    OCCASIONAL = "OCCASIONAL"
+    CONTINUOUS = "CONTINUOUS"
+
+
+class FireDamageScopeEnum(str, Enum):
+    SMOKE_ONLY = "SMOKE_ONLY"
+    PARTIAL_LOSS = "PARTIAL_LOSS"
+    TOTAL_LOSS = "TOTAL_LOSS"
+
+
+class SmokeInhalationEnum(str, Enum):
+    NONE = "NONE"
+    MILD = "MILD"
+    SEVERE = "SEVERE"
+
+
+class AvailableTimeEnum(str, Enum):
+    UNDER_ONE_HOUR = "UNDER_ONE_HOUR"
+    ONE_TO_THREE_HOURS = "ONE_TO_THREE_HOURS"
+    ALL_DAY_HALF_DAY = "ALL_DAY_HALF_DAY"
+
+
+class OnboardingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    disasterType: DisasterTypeEnum = Field(..., description="재난 유형 코드")
+    safetyStatus: SafetyStatusEnum | None = Field(default=None, description="안전 상태")
+    residenceStatus: ResidenceStatusEnum = Field(..., description="거주지 상태")
+    injuryLevel: InjuryLevelEnum = Field(..., description="부상 정도")
+    damages: list[bool] = Field(..., description="재난 유형별 피해 체크 배열")
+    floodLevel: FloodLevelEnum | None = Field(default=None, description="홍수 침수 정도")
+    waterDrainStatus: WaterDrainStatusEnum | None = Field(default=None, description="홍수 배수 상태")
+    aftershockFeeling: AftershockFeelingEnum | None = Field(default=None, description="지진 여진 체감")
+    fireDamageScope: FireDamageScopeEnum | None = Field(default=None, description="화재 피해 범위")
+    smokeInhalation: SmokeInhalationEnum | None = Field(default=None, description="연기 흡입 정도")
+
+
+class OnboardingResponse(BaseModel):
+    userDisasterId: int = Field(..., description="생성된 사용자 재난 ID")
+    impactId: int = Field(..., description="생성된 재난 영향 ID")
+    onboardingRiskLevel: int = Field(..., description="온보딩 위험도(1~3)")
+    message: str = Field(..., description="처리 결과 메시지")
+
+
+class UserConditionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    canGoOut: bool = Field(..., description="외출 가능 여부")
+    availableTime: AvailableTimeEnum = Field(..., description="가용 시간")
+
+
+class ContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    userDisasterId: int = Field(..., description="대상 재난 ID")
+    userCondition: UserConditionRequest = Field(..., description="사용자 상태 입력")
+
+
+class ContextResponse(BaseModel):
+    message: str = Field(..., description="처리 결과 메시지")
+
+
+class RecoveryStageDetailResponse(BaseModel):
+    stageId: int = Field(..., description="단계 번호")
+    stageCode: str = Field(..., description="회복 단계 코드")
+    stageName: str = Field(..., description="회복 단계 이름")
+    description: str = Field(..., description="단계 설명")
+
+
+class RecoveryGraphPointResponse(BaseModel):
+    date: date_type = Field(..., description="기준 일자")
+    stageCode: str = Field(..., description="해당 일자의 단계 코드")
+    stageName: str = Field(..., description="해당 일자의 단계 이름")
+
+
+class RecoveryGraphResponse(BaseModel):
+    userDisasterId: int = Field(..., description="대상 재난 ID")
+    points: list[RecoveryGraphPointResponse] = Field(..., description="회복 단계 이력")
+
+
+class RecoveryProgressResponse(BaseModel):
+    userDisasterId: int = Field(..., description="대상 재난 ID")
+    recoveryProgress: float = Field(..., description="회복 진행률(0~100)")
+    stageCode: str | None = Field(default=None, description="현재 단계 코드")
+    stageName: str | None = Field(default=None, description="현재 단계 이름")

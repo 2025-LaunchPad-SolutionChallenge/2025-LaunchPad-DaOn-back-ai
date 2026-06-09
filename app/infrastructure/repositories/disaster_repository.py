@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import case, func, select
@@ -17,8 +17,10 @@ from app.domain.disaster.entity import (
     RecoveryStageSnapshot,
 )
 from app.domain.disaster.repository import DisasterRepository
+from app.domain.recovery.service import calculate_onboarding_risk_level
 from app.infrastructure.models.disaster_model import (
     AftershockFeeling,
+    DisasterTypeModel,
     AvailableTime,
     DisasterImpactModel,
     EarthquakeImpactModel,
@@ -35,6 +37,8 @@ from app.infrastructure.models.disaster_model import (
     UserDisasterModel,
     WaterDrainStatus,
 )
+from app.infrastructure.models.recovery_model import RecoveryOutputModel, RecoveryStageMasterModel
+from app.infrastructure.models.user_model import UserSettingModel
 
 
 def _to_impact_snapshot(impact: DisasterImpactModel | None) -> ImpactSnapshot | None:
@@ -251,6 +255,248 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         )
         await self._session.flush()
         return row.registration_status.value, resolved_ended_at
+
+    async def create_onboarding(
+        self,
+        *,
+        user_id: int,
+        disaster_type: str,
+        safety_status: str | None,
+        residence_status: str,
+        injury_level: str,
+        damages: list[bool],
+        flood_level: str | None,
+        water_drain_status: str | None,
+        aftershock_feeling: str | None,
+        fire_damage_scope: str | None,
+        smoke_inhalation: str | None,
+    ) -> tuple[int, int, int]:
+        type_row_result = await self._session.execute(
+            select(DisasterTypeModel).where(DisasterTypeModel.disaster_code == disaster_type)
+        )
+        type_row = type_row_result.scalar_one_or_none()
+        if type_row is None:
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="유효하지 않은 disasterType 입니다.",
+                error_key="INVALID_DISASTER_TYPE",
+            )
+        disaster_type_id = type_row.disaster_type_id
+
+        stage_result = await self._session.execute(
+            select(RecoveryStageMasterModel.recovery_stage_id)
+            .where(RecoveryStageMasterModel.stage_code == "CHAOS")
+            .limit(1)
+        )
+        recovery_stage_id = stage_result.scalar_one_or_none()
+        if recovery_stage_id is None:
+            stage_fallback = await self._session.execute(
+                select(RecoveryStageMasterModel.recovery_stage_id).order_by(
+                    RecoveryStageMasterModel.recovery_stage_id.asc()
+                )
+            )
+            recovery_stage_id = stage_fallback.scalar_one_or_none()
+        if recovery_stage_id is None:
+            raise AppException(
+                status_code=500,
+                code=500,
+                message="초기 회복단계 설정이 없습니다.",
+                error_key="RECOVERY_STAGE_NOT_CONFIGURED",
+            )
+
+        user_disaster = UserDisasterModel(
+            user_id=user_id,
+            disaster_type_id=int(disaster_type_id),
+            recovery_stage_id=int(recovery_stage_id),
+            registration_status=RegistrationStatus.ACTIVE,
+            recovery_progress=0.0,
+        )
+        self._session.add(user_disaster)
+        await self._session.flush()
+
+        psych_indices = {"FLOOD": 4, "TYPHOON": 7, "EARTHQUAKE": 6, "FIRE": 5}
+        idx = psych_indices.get(disaster_type)
+        psychological_anxiety = bool(damages[idx]) if idx is not None and idx < len(damages) else False
+        onboarding_risk_level = calculate_onboarding_risk_level(
+            ImpactSnapshot(
+                safety_status=safety_status,
+                residence_status=residence_status,
+                injury_level=injury_level,
+                psychological_anxiety=psychological_anxiety,
+                can_go_out=None,
+                available_time=None,
+            )
+        )
+        impact = DisasterImpactModel(
+            user_disaster_id=user_disaster.user_disaster_id,
+            safety_status=SafetyStatus(str(safety_status)) if safety_status else None,
+            residence_status=ResidenceStatus(str(residence_status)),
+            injury_level=InjuryLevel(str(injury_level)),
+            psychological_anxiety=psychological_anxiety,
+            onboarding_risk_level=onboarding_risk_level,
+        )
+        self._session.add(impact)
+        await self._session.flush()
+
+        if disaster_type == "FLOOD":
+            if flood_level is None or water_drain_status is None:
+                raise AppException(
+                    status_code=400,
+                    code=400,
+                    message="홍수 필수 필드 누락 (floodLevel, waterDrainStatus)",
+                    error_key="MISSING_REQUIRED_FIELD",
+                )
+            self._session.add(
+                FloodImpactModel(
+                    impact_id=impact.impact_id,
+                    flood_level=FloodLevel(str(flood_level)),
+                    water_drain_status=WaterDrainStatus(str(water_drain_status)),
+                    damage_house=bool(damages[0]) if len(damages) > 0 else False,
+                    damage_vehicle=bool(damages[1]) if len(damages) > 1 else False,
+                    electric_problem=bool(damages[2]) if len(damages) > 2 else False,
+                    water_problem=bool(damages[3]) if len(damages) > 3 else False,
+                )
+            )
+        elif disaster_type == "EARTHQUAKE":
+            if aftershock_feeling is None:
+                raise AppException(
+                    status_code=400,
+                    code=400,
+                    message="지진 필수 필드 누락 (aftershockFeeling)",
+                    error_key="MISSING_REQUIRED_FIELD",
+                )
+            self._session.add(
+                EarthquakeImpactModel(
+                    impact_id=impact.impact_id,
+                    aftershock_feeling=AftershockFeeling(str(aftershock_feeling)),
+                    building_crack=bool(damages[0]) if len(damages) > 0 else False,
+                    house_damage=bool(damages[1]) if len(damages) > 1 else False,
+                    vehicle_damage=bool(damages[2]) if len(damages) > 2 else False,
+                    electric_problem=bool(damages[3]) if len(damages) > 3 else False,
+                    water_problem=bool(damages[4]) if len(damages) > 4 else False,
+                )
+            )
+        elif disaster_type == "TYPHOON":
+            self._session.add(
+                TyphoonImpactModel(
+                    impact_id=impact.impact_id,
+                    roof_damage=bool(damages[0]) if len(damages) > 0 else False,
+                    window_damage=bool(damages[1]) if len(damages) > 1 else False,
+                    structure_damage=bool(damages[2]) if len(damages) > 2 else False,
+                    vehicle_damage=bool(damages[3]) if len(damages) > 3 else False,
+                    electric_problem=bool(damages[4]) if len(damages) > 4 else False,
+                    water_problem=bool(damages[5]) if len(damages) > 5 else False,
+                )
+            )
+        elif disaster_type == "FIRE":
+            if fire_damage_scope is None or smoke_inhalation is None:
+                raise AppException(
+                    status_code=400,
+                    code=400,
+                    message="화재 필수 필드 누락 (fireDamageScope, smokeInhalation)",
+                    error_key="MISSING_REQUIRED_FIELD",
+                )
+            self._session.add(
+                FireImpactModel(
+                    impact_id=impact.impact_id,
+                    fire_damage_scope=FireDamageScope(str(fire_damage_scope)),
+                    smoke_inhalation=SmokeInhalation(str(smoke_inhalation)),
+                    house_damage=bool(damages[0]) if len(damages) > 0 else False,
+                    vehicle_damage=bool(damages[1]) if len(damages) > 1 else False,
+                    electric_problem=bool(damages[2]) if len(damages) > 2 else False,
+                    water_problem=bool(damages[3]) if len(damages) > 3 else False,
+                    soot_damage=bool(damages[6]) if len(damages) > 6 else False,
+                    debris_exist=bool(damages[7]) if len(damages) > 7 else False,
+                )
+            )
+
+        setting_result = await self._session.execute(
+            select(UserSettingModel).where(UserSettingModel.user_id == user_id)
+        )
+        setting = setting_result.scalar_one_or_none()
+        if setting is None:
+            setting = UserSettingModel(
+                user_id=user_id,
+                allow_push_notification=None,
+                user_disaster_id=user_disaster.user_disaster_id,
+            )
+            self._session.add(setting)
+        else:
+            setting.user_disaster_id = user_disaster.user_disaster_id
+
+        await self._session.flush()
+        return int(user_disaster.user_disaster_id), int(impact.impact_id), int(impact.onboarding_risk_level or 1)
+
+    async def get_recovery_stage_detail(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[int, str, str, str]:
+        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="해당 disasterId가 존재하지 않습니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        stage_map = {
+            "CHAOS": (1, "CHAOS", "혼란기", "상황을 받아들이는 것만으로도 버거운 상태예요."),
+            "STAGNANT": (2, "STAGNANT", "정체기", "조금은 익숙해졌지만, 앞으로 나아가긴 어려운 상태예요."),
+            "ATTEMPTING": (3, "ATTEMPTING", "시도기", "조심스럽게 다시 움직이기 시작한 상태예요."),
+            "STABLE": (4, "STABLE", "안정기", "일상이 어느 정도 회복되고 있는 상태예요."),
+            "RECOVERY_MAINTAINED": (
+                5,
+                "RECOVERY_MAINTAINED",
+                "회복 유지기",
+                "회복된 일상을 안정적으로 유지하고 있어요.",
+            ),
+        }
+        output_result = await self._session.execute(
+            select(RecoveryOutputModel)
+            .where(RecoveryOutputModel.user_disaster_id == user_disaster_id)
+            .order_by(RecoveryOutputModel.state_date.desc())
+            .limit(1)
+        )
+        output = output_result.scalar_one_or_none()
+        code = output.predicted_stage if output is not None else "CHAOS"
+        return stage_map.get(code, stage_map["CHAOS"])
+
+    async def get_recovery_graph_points(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> list[tuple[date, str, str]]:
+        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="해당 disasterId가 존재하지 않습니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        stage_name_map = {
+            "CHAOS": "혼란기",
+            "STAGNANT": "정체기",
+            "ATTEMPTING": "시도기",
+            "STABLE": "안정기",
+            "RECOVERY_MAINTAINED": "회복 유지기",
+        }
+        result = await self._session.execute(
+            select(RecoveryOutputModel.state_date, RecoveryOutputModel.predicted_stage)
+            .where(RecoveryOutputModel.user_disaster_id == user_disaster_id)
+            .order_by(RecoveryOutputModel.state_date.asc())
+        )
+        rows = result.all()
+        if not rows:
+            return []
+        return [
+            (state_date, stage_code, stage_name_map.get(stage_code, stage_code))
+            for state_date, stage_code in rows
+        ]
 
     async def _get_owned_disaster(
         self,

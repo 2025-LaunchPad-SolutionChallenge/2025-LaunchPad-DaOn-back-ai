@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from enum import Enum
 from datetime import datetime
-from typing import Any
+from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -145,3 +145,44 @@ class ArchiveListResponse(BaseModel):
     items: list[ArchiveListItemResponse] = Field(..., description="아카이브 아이템 목록")
     nextCursor: str | None = Field(default=None, description="다음 페이지 커서")
     hasMore: bool = Field(..., description="다음 페이지 존재 여부")
+
+
+class ChecklistGenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    userDisasterId: int = Field(..., description="재난 ID")
+    targetDate: date = Field(..., description="생성 대상 날짜")
+
+
+class GeneratedItemInfo(BaseModel):
+    checklistItemId: int = Field(..., description="생성된 체크리스트 항목 ID")
+    title: str = Field(..., description="생성된 할 일 제목")
+    itemSourceType: str = Field(..., description="항목 출처 타입")
+
+
+class ChecklistGenerateResponse(BaseModel):
+    items: list[GeneratedItemInfo] = Field(..., description="생성된 체크리스트 목록")
+
+
+class AvailableTimeEnum(str, Enum):
+    UNDER_ONE_HOUR = "UNDER_ONE_HOUR"
+    ONE_TO_THREE_HOURS = "ONE_TO_THREE_HOURS"
+    ALL_DAY_HALF_DAY = "ALL_DAY_HALF_DAY"
+
+
+class ContextUserConditionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    canGoOut: bool = Field(..., description="외출 가능 여부")
+    availableTime: AvailableTimeEnum = Field(..., description="가용 시간")
+
+
+class ChecklistContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    userDisasterId: int = Field(..., description="재난 ID")
+    userCondition: ContextUserConditionRequest = Field(..., description="사용자 상태")
+
+
+class ChecklistContextResponse(BaseModel):
+    message: str = Field(..., description="처리 결과 메시지")

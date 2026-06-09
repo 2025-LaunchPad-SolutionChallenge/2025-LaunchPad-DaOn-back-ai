@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+import os
 from datetime import date, datetime
 from urllib.parse import urlparse
 
 from app.common.exceptions import AppException
+from app.domain.checklist.entity import ChecklistItem
 from app.domain.checklist.repository import ChecklistRepository
 
 
@@ -299,6 +302,129 @@ class ChecklistService:
             cursor=cursor,
             limit=limit,
         )
+
+    async def update_context(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        can_go_out: bool,
+        available_time: str,
+    ) -> None:
+        normalized_time = available_time.strip().upper()
+        if normalized_time not in {"UNDER_ONE_HOUR", "ONE_TO_THREE_HOURS", "ALL_DAY_HALF_DAY"}:
+            raise AppException(
+                status_code=400,
+                code=400,
+                message="availableTime 값이 유효하지 않습니다.",
+                error_key="INVALID_AVAILABLE_TIME",
+            )
+        await self._checklists.update_context(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            can_go_out=can_go_out,
+            available_time=normalized_time,
+        )
+
+    async def generate_ai_checklist(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        target_date: date,
+    ) -> list[ChecklistItem]:
+        impact_full = await self._checklists.get_impact_full(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+        )
+        if impact_full is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="해당 사용자의 재난 온보딩 정보가 존재하지 않습니다.",
+                error_key="DISASTER_IMPACT_NOT_FOUND",
+            )
+
+        prompt = self._build_ai_prompt(impact_full)
+        titles = self._call_gemini(prompt)
+
+        items = [
+            ChecklistItem(
+                user_disaster_id=user_disaster_id,
+                checklist_date=target_date,
+                title=title.strip(),
+                item_source_type="AI_GENERATED",
+                priority=1,
+            )
+            for title in titles[:3]
+        ]
+        return await self._checklists.save_items(items)
+
+    def _build_ai_prompt(self, impact_full: dict[str, object]) -> str:
+        disaster_type = str(impact_full.get("disaster_type", "")).upper()
+        safety_status = str(impact_full.get("safety_status") or "")
+        residence_status = str(impact_full.get("residence_status") or "")
+        can_go_out = bool(impact_full.get("can_go_out"))
+        available_time = str(impact_full.get("available_time") or "")
+        detail = impact_full.get("detail")
+        detail_text = json.dumps(detail, ensure_ascii=False) if detail is not None else "없음"
+
+        can_go_out_str = "가능(TRUE)" if can_go_out else "불가능(FALSE)"
+        time_map = {
+            "UNDER_ONE_HOUR": "1시간 이내",
+            "ONE_TO_THREE_HOURS": "1~3시간",
+            "ALL_DAY_HALF_DAY": "반나절~하루",
+        }
+        avail_time_str = time_map.get(available_time, "알 수 없음")
+
+        return f"""사용자는 재난 이후 회복 과정에 있습니다. 다음 정보를 바탕으로 오늘 수행할 맞춤형 체크리스트를 생성해주세요.
+
+[재난 상황]
+- 재난 유형: {disaster_type}
+- 상세 정보: {detail_text}
+- 안전 상태: {safety_status}
+- 거주 상태: {residence_status}
+
+[사용자 상태]
+- 외출 가능 여부: {can_go_out_str}
+- 외출 가능 시간: {avail_time_str}
+
+조건:
+1. 반드시 딱 3개의 할 일(title)만 생성할 것
+2. 현실적으로 수행 가능해야 함
+3. 구체적인 행동 단위
+
+반드시 아래 JSON 형식으로만 반환하세요:
+[
+  {{"title": "..."}},
+  {{"title": "..."}},
+  {{"title": "..."}}
+]"""
+
+    def _call_gemini(self, prompt: str) -> list[str]:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return ["가족 지인에게 안전 연락하기", "파손된 물건 사진 찍어두기", "식수 및 비상식량 확인하기"]
+
+        try:
+            import google.generativeai as genai
+
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(
+                "gemini-1.5-flash",
+                generation_config={"response_mime_type": "application/json"},
+            )
+            response = model.generate_content(prompt)
+            payload = json.loads(response.text)
+            titles = [str(item.get("title", "")).strip() for item in payload if isinstance(item, dict)]
+            titles = [t for t in titles if t]
+            if len(titles) > 3:
+                titles = titles[:3]
+            elif len(titles) < 3:
+                titles += ["안전 상태 다시 한번 확인하기"] * (3 - len(titles))
+            return titles
+        except Exception:
+            return ["가족 지인에게 안전 연락하기", "파손된 물건 사진 찍어두기", "식수 및 비상식량 확인하기"]
 
     def _validate_attachment_type(self, attachment_type: str | None) -> str:
         if attachment_type is None or not attachment_type.strip():

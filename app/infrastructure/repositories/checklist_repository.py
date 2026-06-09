@@ -6,11 +6,17 @@ from datetime import date, datetime
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.common.exceptions import AppException
+from app.domain.checklist.entity import ChecklistItem
 from app.domain.checklist.repository import ChecklistRepository
 from app.infrastructure.models.checklist_model import ArchiveFileModel, ArchiveItemModel, ChecklistItemModel
-from app.infrastructure.models.disaster_model import RegistrationStatus, UserDisasterModel
+from app.infrastructure.models.disaster_model import (
+    DisasterImpactModel,
+    RegistrationStatus,
+    UserDisasterModel,
+)
 from app.infrastructure.models.user_model import UserSettingModel
 
 
@@ -514,6 +520,142 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
                 json.dumps({"id": int(rows[-1][0].archive_item_id)}).encode("utf-8")
             ).decode("utf-8")
         return items, next_cursor, has_more
+
+    async def save_items(self, items: list[ChecklistItem]) -> list[ChecklistItem]:
+        models = [
+            ChecklistItemModel(
+                user_disaster_id=item.user_disaster_id,
+                checklist_date=item.checklist_date,
+                title=item.title,
+                memo=item.memo,
+                item_source_type=item.item_source_type,
+                priority=item.priority,
+                is_completed=item.is_completed,
+                completed_at=item.completed_at,
+            )
+            for item in items
+        ]
+        self._session.add_all(models)
+        await self._session.flush()
+        for model in models:
+            await self._session.refresh(model)
+        return [
+            ChecklistItem(
+                checklist_item_id=int(model.checklist_item_id),
+                user_disaster_id=int(model.user_disaster_id),
+                checklist_date=model.checklist_date,
+                title=model.title,
+                memo=model.memo,
+                item_source_type=model.item_source_type,
+                priority=int(model.priority),
+                is_completed=bool(model.is_completed),
+                completed_at=model.completed_at,
+            )
+            for model in models
+        ]
+
+    async def get_impact_full(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> dict[str, object] | None:
+        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="존재하지 않는 재난입니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        result = await self._session.execute(
+            select(DisasterImpactModel)
+            .where(DisasterImpactModel.user_disaster_id == user_disaster_id)
+            .options(
+                selectinload(DisasterImpactModel.flood_detail),
+                selectinload(DisasterImpactModel.earthquake_detail),
+                selectinload(DisasterImpactModel.typhoon_detail),
+                selectinload(DisasterImpactModel.fire_detail),
+            )
+        )
+        impact = result.scalar_one_or_none()
+        if impact is None:
+            return None
+        detail: dict[str, object] | None = None
+        if row.disaster_type and row.disaster_type.disaster_code == "FLOOD" and impact.flood_detail:
+            d = impact.flood_detail
+            detail = {
+                "floodLevel": d.flood_level.value,
+                "waterDrainStatus": d.water_drain_status.value,
+                "damageHouse": d.damage_house,
+                "damageVehicle": d.damage_vehicle,
+                "electricProblem": d.electric_problem,
+                "waterProblem": d.water_problem,
+            }
+        elif row.disaster_type and row.disaster_type.disaster_code == "EARTHQUAKE" and impact.earthquake_detail:
+            d = impact.earthquake_detail
+            detail = {
+                "aftershockFeeling": d.aftershock_feeling.value,
+                "buildingCrack": d.building_crack,
+                "houseDamage": d.house_damage,
+                "vehicleDamage": d.vehicle_damage,
+                "electricProblem": d.electric_problem,
+                "waterProblem": d.water_problem,
+            }
+        elif row.disaster_type and row.disaster_type.disaster_code == "TYPHOON" and impact.typhoon_detail:
+            d = impact.typhoon_detail
+            detail = {
+                "roofDamage": d.roof_damage,
+                "windowDamage": d.window_damage,
+                "structureDamage": d.structure_damage,
+                "vehicleDamage": d.vehicle_damage,
+                "electricProblem": d.electric_problem,
+                "waterProblem": d.water_problem,
+            }
+        elif row.disaster_type and row.disaster_type.disaster_code == "FIRE" and impact.fire_detail:
+            d = impact.fire_detail
+            detail = {
+                "fireDamageScope": d.fire_damage_scope.value,
+                "smokeInhalation": d.smoke_inhalation.value,
+                "houseDamage": d.house_damage,
+                "sootDamage": d.soot_damage,
+                "debrisExist": d.debris_exist,
+                "vehicleDamage": d.vehicle_damage,
+                "electricProblem": d.electric_problem,
+                "waterProblem": d.water_problem,
+            }
+        return {
+            "disaster_type": row.disaster_type.disaster_code if row.disaster_type else "",
+            "safety_status": impact.safety_status.value if impact.safety_status else None,
+            "residence_status": impact.residence_status.value if impact.residence_status else None,
+            "can_go_out": impact.can_go_out,
+            "available_time": impact.available_time.value if impact.available_time else None,
+            "detail": detail,
+        }
+
+    async def update_context(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        can_go_out: bool,
+        available_time: str,
+    ) -> None:
+        row = await self._assert_active_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        result = await self._session.execute(
+            select(DisasterImpactModel).where(DisasterImpactModel.user_disaster_id == row.user_disaster_id)
+        )
+        impact = result.scalar_one_or_none()
+        if impact is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="해당 userDisasterId에 대한 온보딩 정보를 찾을 수 없습니다.",
+                error_key="DISASTER_IMPACT_NOT_FOUND",
+            )
+        impact.can_go_out = can_go_out
+        impact.available_time = available_time
+        await self._session.flush()
 
     async def _get_owned_disaster(
         self,

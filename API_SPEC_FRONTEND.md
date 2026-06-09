@@ -353,6 +353,94 @@ Prefix: `/api/v1/users`
 
 Prefix: `/api/v1/disasters`
 
+## `POST /disasters/onboarding`
+
+재난 온보딩(초기 영향 입력 + 사용자 재난 생성)
+
+요청:
+
+```json
+{
+  "disasterType": "FLOOD",
+  "safetyStatus": "DAMAGED",
+  "residenceStatus": "PARTIAL_DAMAGE",
+  "injuryLevel": "MINOR",
+  "damages": [true, false, true, false, true, false, false, false],
+  "floodLevel": "FIRST_FLOOR",
+  "waterDrainStatus": "PARTIAL_DRAINED"
+}
+```
+
+응답:
+
+```json
+{
+  "userDisasterId": 10,
+  "impactId": 21,
+  "onboardingRiskLevel": 2,
+  "message": "피해 상황이 등록되었습니다"
+}
+```
+
+노트:
+
+- `damages` 배열은 재난 유형별 체크 인덱스를 사용합니다.
+- 홍수/지진/화재는 각각 추가 필수 필드가 있으며 누락 시 `400 MISSING_REQUIRED_FIELD` 입니다.
+
+## `GET /disasters/{userDisasterId}/recovery/stage`
+
+최신 회복 단계 조회
+
+응답:
+
+```json
+{
+  "stageId": 1,
+  "stageCode": "CHAOS",
+  "stageName": "혼란기",
+  "description": "상황을 받아들이는 것만으로도 버거운 상태예요."
+}
+```
+
+## `GET /disasters/{userDisasterId}/recovery-graph`
+
+회복 단계 이력(날짜 오름차순)
+
+응답:
+
+```json
+{
+  "userDisasterId": 10,
+  "points": [
+    {
+      "date": "2026-06-01",
+      "stageCode": "CHAOS",
+      "stageName": "혼란기"
+    },
+    {
+      "date": "2026-06-02",
+      "stageCode": "STAGNANT",
+      "stageName": "정체기"
+    }
+  ]
+}
+```
+
+## `GET /disasters/{userDisasterId}/recovery/progress`
+
+현재 회복 진행률 + 단계 정보
+
+응답:
+
+```json
+{
+  "userDisasterId": 10,
+  "recoveryProgress": 42.5,
+  "stageCode": "STAGNANT",
+  "stageName": "정체기"
+}
+```
+
 ## `GET /disasters?page=0&size=20`
 
 내 재난 목록 조회
@@ -480,6 +568,75 @@ ACTIVE 재난 종료/보관
 체크리스트 API는 별도 `/checklists` prefix가 아니라, 현재 구현상 `disasters` 하위 경로입니다.
 
 Prefix: `/api/v1/disasters/{userDisasterId}`
+
+추가로 아래 독립 경로도 구현되어 있습니다.
+
+Prefix: `/api/v1/checklists`
+
+## `POST /checklists/context`
+
+체크리스트 컨텍스트(외출 가능 여부/가용 시간) 저장
+
+요청:
+
+```json
+{
+  "userDisasterId": 10,
+  "userCondition": {
+    "canGoOut": true,
+    "availableTime": "ONE_TO_THREE_HOURS"
+  }
+}
+```
+
+응답:
+
+```json
+{
+  "message": "상황 입력 완료"
+}
+```
+
+## `POST /checklists/ai-generate`
+
+AI 체크리스트 3개 생성
+
+요청:
+
+```json
+{
+  "userDisasterId": 10,
+  "targetDate": "2026-06-09"
+}
+```
+
+응답:
+
+```json
+{
+  "items": [
+    {
+      "checklistItemId": 501,
+      "title": "침수 피해 사진 정리 후 보관하기",
+      "itemSourceType": "AI_GENERATED"
+    },
+    {
+      "checklistItemId": 502,
+      "title": "누전 위험 구역 전원 차단 여부 확인하기",
+      "itemSourceType": "AI_GENERATED"
+    },
+    {
+      "checklistItemId": 503,
+      "title": "안전 상태 다시 한번 확인하기",
+      "itemSourceType": "AI_GENERATED"
+    }
+  ]
+}
+```
+
+노트:
+
+- `GEMINI_API_KEY`가 없거나 생성 실패 시 fallback 3개 항목이 생성됩니다.
 
 ## `POST /disasters/{userDisasterId}/checklist`
 
@@ -677,7 +834,7 @@ Prefix: `/api/v1/disasters/{userDisasterId}`
 
 ---
 
-## 6) Home API
+## 7) Home API
 
 Prefix: `/api/v1/home`
 
@@ -797,9 +954,9 @@ Prefix: `/api/v1/home`
 
 ---
 
-## 7) 프론트 구현 시 주의사항
+## 8) 프론트 구현 시 주의사항
 
-- 체크리스트 API 경로는 현재 `/checklists/*`가 아니라 `/disasters/{userDisasterId}/checklist*` 입니다.
+- 체크리스트는 `/disasters/{userDisasterId}/checklist*`와 `/checklists/context`, `/checklists/ai-generate`를 함께 사용합니다.
 - Home API는 camelCase 응답(`todayTotalTasks`)입니다.
 - `GET /home/summary`는 `userName`, `occurredAt`을 포함합니다.
 - checklist 상세의 `isAiGenerated`는 `item_source_type == "AI_GENERATED"` 기준입니다.
@@ -808,7 +965,7 @@ Prefix: `/api/v1/home`
 
 ---
 
-## 8) 빠른 테스트 순서 (권장)
+## 9) 빠른 테스트 순서 (권장)
 
 1. `POST /api/v1/auth/login`
 2. 받은 `accessToken`으로 Authorization 헤더 세팅
