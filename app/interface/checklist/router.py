@@ -78,6 +78,7 @@ async def submit_checklist_context(
         user_disaster_id=req.userDisasterId,
         can_go_out=req.userCondition.canGoOut,
         available_time=req.userCondition.availableTime,
+        special_notes=req.userCondition.specialNotes,
     )
     return ChecklistContextResponse(message="상황 입력 완료")
 

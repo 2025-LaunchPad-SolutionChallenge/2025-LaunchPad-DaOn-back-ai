@@ -175,6 +175,7 @@ class ContextUserConditionRequest(BaseModel):
 
     canGoOut: bool = Field(..., description="외출 가능 여부")
     availableTime: AvailableTimeEnum = Field(..., description="가용 시간")
+    specialNotes: str | None = Field(default=None, description="특이 사항 (자유 입력)")
 
 
 class ChecklistContextRequest(BaseModel):

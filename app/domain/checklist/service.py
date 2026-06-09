@@ -310,6 +310,7 @@ class ChecklistService:
         user_disaster_id: int,
         can_go_out: bool,
         available_time: str,
+        special_notes: str | None = None,
     ) -> None:
         normalized_time = available_time.strip().upper()
         if normalized_time not in {"UNDER_ONE_HOUR", "ONE_TO_THREE_HOURS", "ALL_DAY_HALF_DAY"}:
@@ -319,11 +320,13 @@ class ChecklistService:
                 message="availableTime 값이 유효하지 않습니다.",
                 error_key="INVALID_AVAILABLE_TIME",
             )
+        normalized_notes = special_notes.strip() if isinstance(special_notes, str) else None
         await self._checklists.update_context(
             user_id=user_id,
             user_disaster_id=user_disaster_id,
             can_go_out=can_go_out,
             available_time=normalized_time,
+            special_notes=normalized_notes,
         )
 
     async def generate_ai_checklist(
@@ -345,7 +348,8 @@ class ChecklistService:
                 error_key="DISASTER_IMPACT_NOT_FOUND",
             )
 
-        prompt = self._build_ai_prompt(impact_full)
+        special_notes = str(impact_full.get("special_notes") or "")
+        prompt = self._build_ai_prompt(impact_full, special_notes=special_notes or None)
         titles = self._call_gemini(prompt)
 
         items = [
@@ -360,7 +364,7 @@ class ChecklistService:
         ]
         return await self._checklists.save_items(items)
 
-    def _build_ai_prompt(self, impact_full: dict[str, object]) -> str:
+    def _build_ai_prompt(self, impact_full: dict[str, object], *, special_notes: str | None = None) -> str:
         disaster_type = str(impact_full.get("disaster_type", "")).upper()
         safety_status = str(impact_full.get("safety_status") or "")
         residence_status = str(impact_full.get("residence_status") or "")
@@ -377,6 +381,8 @@ class ChecklistService:
         }
         avail_time_str = time_map.get(available_time, "알 수 없음")
 
+        notes_line = f"\n- 특이 사항: {special_notes}" if special_notes else ""
+
         return f"""사용자는 재난 이후 회복 과정에 있습니다. 다음 정보를 바탕으로 오늘 수행할 맞춤형 체크리스트를 생성해주세요.
 
 [재난 상황]
@@ -387,12 +393,13 @@ class ChecklistService:
 
 [사용자 상태]
 - 외출 가능 여부: {can_go_out_str}
-- 외출 가능 시간: {avail_time_str}
+- 외출 가능 시간: {avail_time_str}{notes_line}
 
 조건:
 1. 반드시 딱 3개의 할 일(title)만 생성할 것
 2. 현실적으로 수행 가능해야 함
 3. 구체적인 행동 단위
+4. 특이 사항이 있으면 반드시 반영할 것
 
 반드시 아래 JSON 형식으로만 반환하세요:
 [

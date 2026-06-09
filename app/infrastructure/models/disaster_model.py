@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -172,6 +173,7 @@ class DisasterImpactModel(TimestampMixin, Base):
     onboarding_risk_level: Mapped[Optional[int]] = mapped_column(
         "onboarding_risk_level", Integer, nullable=True
     )
+    special_notes: Mapped[Optional[str]] = mapped_column("special_notes", Text, nullable=True)
 
     user_disaster: Mapped["UserDisasterModel"] = relationship(back_populates="impact")
     earthquake_detail: Mapped[Optional["EarthquakeImpactModel"]] = relationship(

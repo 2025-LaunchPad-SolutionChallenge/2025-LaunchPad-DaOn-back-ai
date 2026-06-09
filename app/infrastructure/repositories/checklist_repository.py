@@ -630,6 +630,7 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
             "residence_status": impact.residence_status.value if impact.residence_status else None,
             "can_go_out": impact.can_go_out,
             "available_time": impact.available_time.value if impact.available_time else None,
+            "special_notes": impact.special_notes,
             "detail": detail,
         }
 
@@ -640,6 +641,7 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
         user_disaster_id: int,
         can_go_out: bool,
         available_time: str,
+        special_notes: str | None = None,
     ) -> None:
         row = await self._assert_active_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
         result = await self._session.execute(
@@ -655,6 +657,7 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
             )
         impact.can_go_out = can_go_out
         impact.available_time = available_time
+        impact.special_notes = special_notes
         await self._session.flush()
 
     async def _get_owned_disaster(
