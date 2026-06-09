@@ -44,6 +44,7 @@ class ImpactSnapshot:
     safety_status: str | None
     residence_status: str | None
     injury_level: str | None
+    psychological_anxiety: bool | None
     can_go_out: bool | None
     available_time: str | None
 

@@ -44,6 +44,7 @@ def _to_impact_snapshot(impact: DisasterImpactModel | None) -> ImpactSnapshot | 
         safety_status=impact.safety_status.value if impact.safety_status else None,
         residence_status=impact.residence_status.value if impact.residence_status else None,
         injury_level=impact.injury_level.value if impact.injury_level else None,
+        psychological_anxiety=impact.psychological_anxiety,
         can_go_out=impact.can_go_out,
         available_time=impact.available_time.value if impact.available_time else None,
     )

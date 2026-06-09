@@ -1,10 +1,10 @@
-from app.domain.disaster.entity import DisasterImpact
+from app.domain.disaster.entity import ImpactSnapshot
 from app.domain.recovery.entity import RecoveryFeatures, Stage
 
 
 # ── 온보딩 위험도 계산 ─────────────────────────────────────────────────────
 
-def calculate_onboarding_risk_level(impact: DisasterImpact) -> int:
+def calculate_onboarding_risk_level(impact: ImpactSnapshot) -> int:
     """
     재난 피해 정보를 기반으로 온보딩 위험도(1~3)를 계산한다.
     Max 조건: 하나라도 해당하면 해당 단계로 분류.

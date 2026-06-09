@@ -1,11 +1,15 @@
 from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+try:
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+except ModuleNotFoundError:
+    AsyncIOScheduler = None  # type: ignore[assignment]
 
 from app.common.exceptions import AppException
 from app.common.swagger import OPENAPI_TAGS, configure_openapi
@@ -27,19 +31,22 @@ from app.interface.user.router import router as user_router
 async def lifespan(_app: FastAPI):
     init_firebase()
 
-    scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
-    scheduler.add_job(
-        run_recovery_labeling_batch,
-        trigger="cron",
-        hour=0,
-        minute=0,
-        id="recovery_labeling",
-    )
-    scheduler.start()
+    scheduler = None
+    if AsyncIOScheduler is not None:
+        scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
+        scheduler.add_job(
+            run_recovery_labeling_batch,
+            trigger="cron",
+            hour=0,
+            minute=0,
+            id="recovery_labeling",
+        )
+        scheduler.start()
 
     yield
 
-    scheduler.shutdown()
+    if scheduler is not None:
+        scheduler.shutdown()
 
 
 app = FastAPI(
