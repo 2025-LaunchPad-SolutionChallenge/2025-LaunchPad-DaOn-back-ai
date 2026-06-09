@@ -9,9 +9,12 @@ from contextlib import ExitStack, contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import create_engine, text
 from starlette.testclient import TestClient
 
 from firebase_admin.exceptions import UnauthenticatedError
+
+from app.config import settings
 
 
 def _uid_from_token(token: str) -> str:
@@ -58,6 +61,141 @@ def _test_client(
 
                 with TestClient(app) as client:
                     yield client
+
+
+def _sync_database_url() -> str:
+    return settings.DATABASE_URL.replace("mysql+aiomysql://", "mysql+pymysql://", 1)
+
+
+def _ensure_disaster_type(conn: Any, *, code: str, name: str) -> int:
+    row = conn.execute(
+        text("SELECT disaster_type_id FROM disaster_types WHERE disaster_code=:code"),
+        {"code": code},
+    ).first()
+    if row is not None:
+        return int(row[0])
+    result = conn.execute(
+        text(
+            "INSERT INTO disaster_types (disaster_code, disaster_name, description) "
+            "VALUES (:code, :name, NULL)"
+        ),
+        {"code": code, "name": name},
+    )
+    return int(result.lastrowid)
+
+
+def _ensure_recovery_stage(conn: Any, *, code: str, name: str) -> int:
+    row = conn.execute(
+        text("SELECT recovery_stage_id FROM recovery_stage_masters WHERE stage_code=:code"),
+        {"code": code},
+    ).first()
+    if row is not None:
+        return int(row[0])
+    result = conn.execute(
+        text(
+            "INSERT INTO recovery_stage_masters "
+            "(stage_code, stage_name, description, created_at, updated_at) "
+            "VALUES (:code, :name, NULL, NOW(), NOW())"
+        ),
+        {"code": code, "name": name},
+    )
+    return int(result.lastrowid)
+
+
+def _seed_disaster_rows(user_id: int) -> dict[str, int]:
+    engine = create_engine(_sync_database_url())
+    try:
+        with engine.begin() as conn:
+            flood_type_id = _ensure_disaster_type(conn, code="FLOOD", name="홍수")
+            fire_type_id = _ensure_disaster_type(conn, code="FIRE", name="화재")
+            typhoon_type_id = _ensure_disaster_type(conn, code="TYPHOON", name="태풍")
+
+            chaos_stage_id = _ensure_recovery_stage(conn, code="CHAOS", name="혼란기")
+            stable_stage_id = _ensure_recovery_stage(conn, code="STABLE", name="안정기")
+            recovery_stage_id = _ensure_recovery_stage(conn, code="RECOVERY", name="회복 유지기")
+
+            active_id = int(
+                conn.execute(
+                    text(
+                        "INSERT INTO user_disasters "
+                        "(user_id, disaster_type_id, title, registered_at, ended_at, registration_status, "
+                        "recovery_stage_id, recovery_progress, created_at, updated_at) "
+                        "VALUES (:user_id, :type_id, :title, :registered_at, NULL, 'ACTIVE', :stage_id, :progress, NOW(), NOW())"
+                    ),
+                    {
+                        "user_id": user_id,
+                        "type_id": flood_type_id,
+                        "title": "2026 여름 침수 피해",
+                        "registered_at": "2026-07-15 14:00:00",
+                        "stage_id": chaos_stage_id,
+                        "progress": 0.15,
+                    },
+                ).lastrowid
+            )
+            expired_id = int(
+                conn.execute(
+                    text(
+                        "INSERT INTO user_disasters "
+                        "(user_id, disaster_type_id, title, registered_at, ended_at, registration_status, "
+                        "recovery_stage_id, recovery_progress, created_at, updated_at) "
+                        "VALUES (:user_id, :type_id, :title, :registered_at, :ended_at, 'EXPIRED', :stage_id, :progress, NOW(), NOW())"
+                    ),
+                    {
+                        "user_id": user_id,
+                        "type_id": fire_type_id,
+                        "title": "2026 봄 산불",
+                        "registered_at": "2026-03-10 09:00:00",
+                        "ended_at": "2026-03-15 18:00:00",
+                        "stage_id": stable_stage_id,
+                        "progress": 0.82,
+                    },
+                ).lastrowid
+            )
+            archived_id = int(
+                conn.execute(
+                    text(
+                        "INSERT INTO user_disasters "
+                        "(user_id, disaster_type_id, title, registered_at, ended_at, registration_status, "
+                        "recovery_stage_id, recovery_progress, created_at, updated_at) "
+                        "VALUES (:user_id, :type_id, :title, :registered_at, :ended_at, 'ARCHIVED', :stage_id, :progress, NOW(), NOW())"
+                    ),
+                    {
+                        "user_id": user_id,
+                        "type_id": typhoon_type_id,
+                        "title": "2025 태풍",
+                        "registered_at": "2025-09-01 00:00:00",
+                        "ended_at": "2025-09-03 00:00:00",
+                        "stage_id": recovery_stage_id,
+                        "progress": 1.0,
+                    },
+                ).lastrowid
+            )
+
+            impact_id = int(
+                conn.execute(
+                    text(
+                        "INSERT INTO disaster_impacts "
+                        "(user__disaster_id, safety_status, residence_status, injury_level, "
+                        "can_go_out, available_time, created_at, updated_at) "
+                        "VALUES (:user_disaster_id, 'DAMAGED', 'PARTIAL_DAMAGE', 'MINOR', 0, "
+                        "'UNDER_ONE_HOUR', NOW(), NOW())"
+                    ),
+                    {"user_disaster_id": active_id},
+                ).lastrowid
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO flood_impacts "
+                    "(flood_level, water_drain_status, damage_house, damage_vehicle, "
+                    "electric_problem, water_problem, impact_id) "
+                    "VALUES ('FIRST_FLOOR', 'PARTIAL_DRAINED', 1, 0, 1, 1, :impact_id)"
+                ),
+                {"impact_id": impact_id},
+            )
+
+            return {"active": active_id, "expired": expired_id, "archived": archived_id}
+    finally:
+        engine.dispose()
 
 
 def test_register_login_refresh_me_logout_revoked_chain() -> None:
@@ -341,3 +479,261 @@ def test_refresh_with_old_token_after_rotate() -> None:
         )
         assert stale.status_code == 401, stale.text
         assert stale.json().get("code") == "REVOKED_REFRESH_TOKEN"
+
+
+def test_disaster_list_detail_patch_and_close_flow() -> None:
+    token = "firebase-ok-disaster-" + secrets.token_hex(6)
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "재난테스트",
+                "birthDate": "1991-05-05",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
+        me = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access}"})
+        user_id = int(me.json()["userId"])
+
+        ids = _seed_disaster_rows(user_id)
+
+        listed = client.get(
+            "/api/v1/disasters?page=0&size=20",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert listed.status_code == 200, listed.text
+        body = listed.json()
+        assert body["totalElements"] >= 3
+        first_three = body["content"][:3]
+        assert [x["status"] for x in first_three] == ["ACTIVE", "EXPIRED", "ARCHIVED"]
+        assert first_three[0]["disasterTypeCode"] == "FLOOD"
+
+        detail = client.get(
+            f"/api/v1/disasters/{ids['active']}",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert detail.status_code == 200, detail.text
+        d = detail.json()
+        assert d["impact"]["safetyStatus"] == "DAMAGED"
+        assert d["detail"]["floodLevel"] == "FIRST_FLOOR"
+
+        patch_resp = client.patch(
+            f"/api/v1/disasters/{ids['active']}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "2026 여름 침수 피해 (수정)",
+                "impact": {
+                    "safetyStatus": "SAFE",
+                    "residenceStatus": "LIVABLE",
+                    "injuryLevel": "NONE",
+                    "canGoOut": True,
+                    "availableTime": "ALL_DAY_HALF_DAY",
+                },
+                "detail": {
+                    "floodLevel": "NONE",
+                    "waterDrainStatus": "MOSTLY_DRAINED",
+                    "damageHouse": False,
+                    "damageVehicle": False,
+                    "electricProblem": False,
+                    "waterProblem": False,
+                },
+            },
+        )
+        assert patch_resp.status_code == 200, patch_resp.text
+        assert patch_resp.json()["message"] == "재난 정보가 수정되었습니다."
+
+        patched_detail = client.get(
+            f"/api/v1/disasters/{ids['active']}",
+            headers={"Authorization": f"Bearer {access}"},
+        ).json()
+        assert patched_detail["title"] == "2026 여름 침수 피해 (수정)"
+        assert patched_detail["impact"]["safetyStatus"] == "SAFE"
+        assert patched_detail["detail"]["waterDrainStatus"] == "MOSTLY_DRAINED"
+
+        close_resp = client.patch(
+            f"/api/v1/disasters/{ids['active']}/close",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"action": "CLOSE"},
+        )
+        assert close_resp.status_code == 200, close_resp.text
+        closed = close_resp.json()
+        assert closed["status"] == "EXPIRED"
+        assert closed["endedAt"] is not None
+
+        lock_edit = client.patch(
+            f"/api/v1/disasters/{ids['active']}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"title": "수정불가"},
+        )
+        assert lock_edit.status_code == 409, lock_edit.text
+        assert lock_edit.json()["code"] == "DISASTER_NOT_EDITABLE"
+
+
+def test_disaster_forbidden_and_not_found_errors() -> None:
+    owner_token = "firebase-ok-disaster-owner-" + secrets.token_hex(6)
+    other_token = "firebase-ok-disaster-other-" + secrets.token_hex(6)
+
+    with _test_client() as client:
+        owner = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": owner_token,
+                "name": "소유자",
+                "birthDate": "1990-01-01",
+            },
+        )
+        assert owner.status_code == 200, owner.text
+        owner_access = owner.json()["accessToken"]
+        owner_me = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {owner_access}"})
+        owner_id = int(owner_me.json()["userId"])
+        ids = _seed_disaster_rows(owner_id)
+
+        other = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": other_token,
+                "name": "타인",
+                "birthDate": "1992-02-02",
+            },
+        )
+        assert other.status_code == 200, other.text
+        other_access = other.json()["accessToken"]
+
+        forbidden = client.get(
+            f"/api/v1/disasters/{ids['active']}",
+            headers={"Authorization": f"Bearer {other_access}"},
+        )
+        assert forbidden.status_code == 403, forbidden.text
+        assert forbidden.json()["code"] == "FORBIDDEN"
+
+        not_found = client.get(
+            "/api/v1/disasters/999999999",
+            headers={"Authorization": f"Bearer {owner_access}"},
+        )
+        assert not_found.status_code == 404, not_found.text
+        assert not_found.json()["code"] == "DISASTER_NOT_FOUND"
+
+
+def test_checklist_and_attachment_flow() -> None:
+    token = "firebase-ok-checklist-" + secrets.token_hex(6)
+    with _test_client() as client:
+        reg = client.post(
+            "/api/v1/auth/register",
+            json={
+                "firebaseToken": token,
+                "name": "체크리스트",
+                "birthDate": "1993-03-03",
+            },
+        )
+        assert reg.status_code == 200, reg.text
+        access = reg.json()["accessToken"]
+        me = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access}"})
+        user_id = int(me.json()["userId"])
+        ids = _seed_disaster_rows(user_id)
+
+        created = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "보험사 접수 서류 준비",
+                "checklistDate": "2026-07-16",
+                "priority": 1,
+            },
+        )
+        assert created.status_code == 201, created.text
+        checklist_item_id = int(created.json()["checklistItemId"])
+
+        patched = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "보험사 접수 서류 준비 (수정)",
+                "isCompleted": True,
+                "priority": 2,
+            },
+        )
+        assert patched.status_code == 200, patched.text
+        assert patched.json()["checklistItemId"] == checklist_item_id
+
+        memo_added = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "attachmentType": "MEMO",
+                "content": "침수 당시 1층 바닥까지 물이 차올랐음.",
+            },
+        )
+        assert memo_added.status_code == 201, memo_added.text
+        memo_id = int(memo_added.json()["attachmentId"])
+
+        file_added = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "attachmentType": "IMAGE",
+                "fileUrl": _firebase_storage_url("damage_photo_01.jpg"),
+                "originalFileName": "damage_photo_01.jpg",
+                "mimeType": "image/jpeg",
+                "fileSize": 204800,
+                "thumbnailUrl": _firebase_storage_url("thumb_damage_photo_01.jpg"),
+            },
+        )
+        assert file_added.status_code == 201, file_added.text
+        file_id = int(file_added.json()["attachmentId"])
+
+        memo_patch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{memo_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"content": "내용을 수정합니다."},
+        )
+        assert memo_patch.status_code == 200, memo_patch.text
+
+        file_patch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{file_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "fileUrl": _firebase_storage_url("new_file.jpg"),
+                "originalFileName": "new_file.jpg",
+                "mimeType": "image/jpeg",
+                "fileSize": 310000,
+                "thumbnailUrl": _firebase_storage_url("thumb_new_file.jpg"),
+            },
+        )
+        assert file_patch.status_code == 200, file_patch.text
+
+        deleted = client.delete(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{file_id}",
+            headers={"Authorization": f"Bearer {access}"},
+        )
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["attachmentId"] == file_id
+
+        bad_date = client.post(
+            f"/api/v1/disasters/{ids['active']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"title": "x", "checklistDate": "20260716", "priority": 1},
+        )
+        assert bad_date.status_code == 400, bad_date.text
+        assert bad_date.json()["code"] == "INVALID_DATE_FORMAT"
+
+        mismatch = client.patch(
+            f"/api/v1/disasters/{ids['active']}/checklist/{checklist_item_id}/attachments/{memo_id}",
+            headers={"Authorization": f"Bearer {access}"},
+            json={"fileUrl": _firebase_storage_url("wrong.jpg")},
+        )
+        assert mismatch.status_code == 400, mismatch.text
+        assert mismatch.json()["code"] == "ATTACHMENT_TYPE_MISMATCH"
+
+        not_active = client.post(
+            f"/api/v1/disasters/{ids['expired']}/checklist",
+            headers={"Authorization": f"Bearer {access}"},
+            json={
+                "title": "종료재난",
+                "checklistDate": "2026-07-16",
+                "priority": 1,
+            },
+        )
+        assert not_active.status_code == 409, not_active.text
+        assert not_active.json()["code"] == "DISASTER_NOT_ACTIVE"

@@ -1,113 +1,95 @@
-from enum import Enum
-from typing import List, Optional
+from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
+from datetime import datetime
+from typing import Any, Literal
 
-
-class CamelModel(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class DisasterType(str, Enum):
-    FLOOD = "FLOOD"
-    TYPHOON = "TYPHOON"
-    EARTHQUAKE = "EARTHQUAKE"
-    FIRE = "FIRE"
+class RecoveryStageResponse(BaseModel):
+    stageCode: str
+    stageName: str
 
 
-class SafetyStatus(str, Enum):
-    SAFE = "SAFE"
-    MINOR = "MINOR"
-    DAMAGED = "DAMAGED"
-    EMERGENCY = "EMERGENCY"
+class DisasterListItemResponse(BaseModel):
+    userDisasterId: int
+    title: str | None
+    disasterTypeCode: str
+    disasterTypeName: str | None
+    status: str
+    occurredAt: datetime
+    endedAt: datetime | None
+    recoveryStage: RecoveryStageResponse
+    recoveryProgress: float
 
 
-class ResidenceStatus(str, Enum):
-    LIVABLE = "LIVABLE"
-    PARTIAL_DAMAGE = "PARTIAL_DAMAGE"
-    UNLIVABLE = "UNLIVABLE"
+class DisasterListResponse(BaseModel):
+    content: list[DisasterListItemResponse]
+    page: int
+    size: int
+    totalElements: int
 
 
-class InjuryLevel(str, Enum):
-    NONE = "NONE"
-    MINOR = "MINOR"
-    SEVERE = "SEVERE"
+class DisasterTypeResponse(BaseModel):
+    disasterTypeId: int
+    disasterCode: str
+    name: str | None
 
 
-class FloodLevel(str, Enum):
-    NONE = "NONE"
-    FRONT_YARD = "FRONT_YARD"
-    FIRST_FLOOR = "FIRST_FLOOR"
-    INSIDE_HOME = "INSIDE_HOME"
+class DisasterImpactResponse(BaseModel):
+    safetyStatus: str | None
+    residenceStatus: str | None
+    injuryLevel: str | None
+    canGoOut: bool | None
+    availableTime: str | None
 
 
-class WaterDrainStatus(str, Enum):
-    STILL_PRESENT = "STILL_PRESENT"
-    PARTIAL_DRAINED = "PARTIAL_DRAINED"
-    MOSTLY_DRAINED = "MOSTLY_DRAINED"
+class DisasterDetailResponse(BaseModel):
+    userDisasterId: int
+    title: str | None
+    disasterType: DisasterTypeResponse
+    status: str
+    occurredAt: datetime
+    endedAt: datetime | None
+    recoveryStage: RecoveryStageResponse
+    recoveryProgress: float
+    impact: DisasterImpactResponse | None
+    detail: dict[str, Any] | None
 
 
-class AftershockFeeling(str, Enum):
-    NONE = "NONE"
-    OCCASIONAL = "OCCASIONAL"
-    CONTINUOUS = "CONTINUOUS"
+class DisasterImpactPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    safetyStatus: str | None = None
+    residenceStatus: str | None = None
+    injuryLevel: str | None = None
+    canGoOut: bool | None = None
+    availableTime: str | None = None
 
 
-class FireDamageScope(str, Enum):
-    SMOKE_ONLY = "SMOKE_ONLY"
-    PARTIAL_LOSS = "PARTIAL_LOSS"
-    TOTAL_LOSS = "TOTAL_LOSS"
+class DisasterPatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    occurredAt: datetime | None = None
+    impact: DisasterImpactPatchRequest | None = None
+    detail: dict[str, Any] | None = None
 
 
-class SmokeInhalation(str, Enum):
-    NONE = "NONE"
-    MILD = "MILD"
-    SEVERE = "SEVERE"
-
-
-class AvailableTime(str, Enum):
-    UNDER_ONE_HOUR = "UNDER_ONE_HOUR"
-    ONE_TO_THREE_HOURS = "ONE_TO_THREE_HOURS"
-    ALL_DAY_HALF_DAY = "ALL_DAY_HALF_DAY"
-
-
-class OnboardingRequest(CamelModel):
-    disaster_type: DisasterType
-    safety_status: Optional[SafetyStatus] = None
-    residence_status: ResidenceStatus
-    injury_level: InjuryLevel
-    damages: List[bool]
-    flood_level: Optional[FloodLevel] = None
-    water_drain_status: Optional[WaterDrainStatus] = None
-    aftershock_feeling: Optional[AftershockFeeling] = None
-    fire_damage_scope: Optional[FireDamageScope] = None
-    smoke_inhalation: Optional[SmokeInhalation] = None
-
-
-class OnboardingResponse(CamelModel):
-    user_disaster_id: int
-    impact_id: int
-    onboarding_risk_level: int
+class DisasterPatchResponse(BaseModel):
+    userDisasterId: int
     message: str
 
 
-class UserCondition(CamelModel):
-    can_go_out: bool
-    available_time: AvailableTime
+class DisasterCloseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["CLOSE", "ARCHIVE"] = Field(..., description="상태 전환 액션")
+    endedAt: datetime | None = None
 
 
-class ContextRequest(CamelModel):
-    user_disaster_id: int
-    user_condition: UserCondition
-
-
-class ContextResponse(CamelModel):
+class DisasterCloseResponse(BaseModel):
+    userDisasterId: int
+    status: str
+    endedAt: datetime
     message: str
-
-
-class RecoveryStageResponse(CamelModel):
-    stage_id: int
-    stage_code: str
-    stage_name: str
-    description: str

@@ -9,7 +9,11 @@ from app.common.exceptions import AppException
 from app.common.security import decode_access_token_claims
 from app.database import AsyncSessionLocal
 from app.domain.auth.service import AuthService
+from app.domain.checklist.service import ChecklistService
+from app.domain.disaster.service import DisasterService
 from app.infrastructure.repositories.auth_repository import SqlAlchemyAuthRepository
+from app.infrastructure.repositories.checklist_repository import SqlAlchemyChecklistRepository
+from app.infrastructure.repositories.disaster_repository import SqlAlchemyDisasterRepository
 from app.infrastructure.repositories.user_repository import SqlAlchemyUserRepository
 
 _bearer_optional = HTTPBearer(
@@ -76,3 +80,11 @@ async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
         SqlAlchemyUserRepository(db),
         SqlAlchemyAuthRepository(db),
     )
+
+
+async def get_disaster_service(db: AsyncSession = Depends(get_db)) -> DisasterService:
+    return DisasterService(SqlAlchemyDisasterRepository(db))
+
+
+async def get_checklist_service(db: AsyncSession = Depends(get_db)) -> ChecklistService:
+    return ChecklistService(SqlAlchemyChecklistRepository(db))

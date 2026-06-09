@@ -16,6 +16,14 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "인증된 사용자의 프로필 조회·수정 및 프로필 이미지 업로드",
     },
     {
+        "name": "disasters",
+        "description": "재난 목록 조회, 상세 조회, 수정, 종료/보관 처리",
+    },
+    {
+        "name": "checklists",
+        "description": "재난별 체크리스트 및 첨부(메모/이미지/파일) 관리",
+    },
+    {
         "name": "health",
         "description": "서버 상태 확인",
     },
@@ -56,6 +64,7 @@ def _error_response(status_code: int, description: str) -> dict[str, Any]:
 COMMON_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: _error_response(400, "잘못된 요청 (필수 필드 누락, 형식 오류 등)"),
     401: _error_response(401, "인증 실패 (토큰 없음, 만료, 유효하지 않음)"),
+    403: _error_response(403, "접근 권한 없음"),
     404: _error_response(404, "리소스를 찾을 수 없음"),
     409: _error_response(409, "리소스 충돌 (중복 등)"),
     422: _error_response(422, "요청 본문 검증 실패"),

@@ -1,215 +1,432 @@
-from typing import Optional
+from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload
 
+from app.common.exceptions import AppException
 from app.domain.disaster.entity import (
-    DisasterImpact,
-    DisasterImpactFull,
-    EarthquakeDetail,
-    FireDetail,
-    FloodDetail,
-    TyphoonDetail,
+    DisasterDetail,
+    DisasterListItem,
+    DisasterListPage,
+    DisasterTypeSnapshot,
+    ImpactSnapshot,
+    RecoveryStageSnapshot,
 )
 from app.domain.disaster.repository import DisasterRepository
 from app.infrastructure.models.disaster_model import (
+    AftershockFeeling,
+    AvailableTime,
     DisasterImpactModel,
-    DisasterTypeModel,
     EarthquakeImpactModel,
+    FireDamageScope,
     FireImpactModel,
     FloodImpactModel,
+    FloodLevel,
+    InjuryLevel,
     RegistrationStatus,
+    ResidenceStatus,
+    SafetyStatus,
+    SmokeInhalation,
     TyphoonImpactModel,
     UserDisasterModel,
+    WaterDrainStatus,
 )
-from app.infrastructure.models.recovery_model import RecoveryStageMasterModel
-from app.infrastructure.models.user_model import UserSettingModel
 
 
-def _model_to_entity(model: DisasterImpactModel) -> DisasterImpact:
-    return DisasterImpact(
-        impact_id=model.impact_id,
-        user_disaster_id=model.user_disaster_id,
-        safety_status=model.safety_status.value if model.safety_status else None,
-        residence_status=model.residence_status.value,
-        injury_level=model.injury_level.value,
-        can_go_out=model.can_go_out,
-        available_time=model.available_time.value if model.available_time else None,
-        psychological_anxiety=model.psychological_anxiety,
-        onboarding_risk_level=model.onboarding_risk_level,
+def _to_impact_snapshot(impact: DisasterImpactModel | None) -> ImpactSnapshot | None:
+    if impact is None:
+        return None
+    return ImpactSnapshot(
+        safety_status=impact.safety_status.value if impact.safety_status else None,
+        residence_status=impact.residence_status.value if impact.residence_status else None,
+        injury_level=impact.injury_level.value if impact.injury_level else None,
+        can_go_out=impact.can_go_out,
+        available_time=impact.available_time.value if impact.available_time else None,
     )
 
 
-def _model_to_full(model: DisasterImpactModel) -> DisasterImpactFull:
-    flood = None
-    if model.flood_detail:
-        f = model.flood_detail
-        flood = FloodDetail(
-            impact_id=f.impact_id,
-            flood_level=f.flood_level.value,
-            water_drain_status=f.water_drain_status.value,
-            damage_house=f.damage_house,
-            damage_vehicle=f.damage_vehicle,
-            electric_problem=f.electric_problem,
-            water_problem=f.water_problem,
-        )
-
-    typhoon = None
-    if model.typhoon_detail:
-        t = model.typhoon_detail
-        typhoon = TyphoonDetail(
-            impact_id=t.impact_id,
-            roof_damage=t.roof_damage,
-            window_damage=t.window_damage,
-            structure_damage=t.structure_damage,
-            vehicle_damage=t.vehicle_damage,
-            electric_problem=t.electric_problem,
-            water_problem=t.water_problem,
-        )
-
-    earthquake = None
-    if model.earthquake_detail:
-        e = model.earthquake_detail
-        earthquake = EarthquakeDetail(
-            impact_id=e.impact_id,
-            aftershock_feeling=e.aftershock_feeling.value,
-            building_crack=e.building_crack,
-            house_damage=e.house_damage,
-            vehicle_damage=e.vehicle_damage,
-            electric_problem=e.electric_problem,
-            water_problem=e.water_problem,
-        )
-
-    fire = None
-    if model.fire_detail:
-        fi = model.fire_detail
-        fire = FireDetail(
-            impact_id=fi.impact_id,
-            fire_damage_scope=fi.fire_damage_scope.value,
-            smoke_inhalation=fi.smoke_inhalation.value,
-            house_damage=fi.house_damage,
-            vehicle_damage=fi.vehicle_damage,
-            electric_problem=fi.electric_problem,
-            water_problem=fi.water_problem,
-            soot_damage=fi.soot_damage,
-            debris_exist=fi.debris_exist,
-        )
-
-    return DisasterImpactFull(
-        impact=_model_to_entity(model),
-        flood_detail=flood,
-        typhoon_detail=typhoon,
-        earthquake_detail=earthquake,
-        fire_detail=fire,
-    )
+def _to_detail_payload(row: UserDisasterModel) -> dict[str, Any] | None:
+    impact = row.impact
+    if impact is None:
+        return None
+    disaster_code = row.disaster_type.disaster_code
+    if disaster_code == "FLOOD" and impact.flood_detail:
+        d = impact.flood_detail
+        return {
+            "floodLevel": d.flood_level.value,
+            "waterDrainStatus": d.water_drain_status.value,
+            "damageHouse": d.damage_house,
+            "damageVehicle": d.damage_vehicle,
+            "electricProblem": d.electric_problem,
+            "waterProblem": d.water_problem,
+        }
+    if disaster_code == "EARTHQUAKE" and impact.earthquake_detail:
+        d = impact.earthquake_detail
+        return {
+            "aftershockFeeling": d.aftershock_feeling.value,
+            "buildingCrack": d.building_crack,
+            "houseDamage": d.house_damage,
+            "vehicleDamage": d.vehicle_damage,
+            "electricProblem": d.electric_problem,
+            "waterProblem": d.water_problem,
+        }
+    if disaster_code == "TYPHOON" and impact.typhoon_detail:
+        d = impact.typhoon_detail
+        return {
+            "roofDamage": d.roof_damage,
+            "windowDamage": d.window_damage,
+            "structureDamage": d.structure_damage,
+            "vehicleDamage": d.vehicle_damage,
+            "electricProblem": d.electric_problem,
+            "waterProblem": d.water_problem,
+        }
+    if disaster_code == "FIRE" and impact.fire_detail:
+        d = impact.fire_detail
+        return {
+            "fireDamageScope": d.fire_damage_scope.value,
+            "smokeInhalation": d.smoke_inhalation.value,
+            "houseDamage": d.house_damage,
+            "sootDamage": d.soot_damage,
+            "debrisExist": d.debris_exist,
+            "vehicleDamage": d.vehicle_damage,
+            "electricProblem": d.electric_problem,
+            "waterProblem": d.water_problem,
+        }
+    return None
 
 
-class SQLDisasterRepository(DisasterRepository):
+class SqlAlchemyDisasterRepository(DisasterRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_disaster_type_id_by_code(self, code: str) -> int:
-        result = await self._session.execute(
-            select(DisasterTypeModel.disaster_type_id).where(
-                DisasterTypeModel.disaster_code == code
+    async def get_disasters_page(self, *, user_id: int, page: int, size: int) -> DisasterListPage:
+        order_priority = case(
+            (UserDisasterModel.registration_status == RegistrationStatus.ACTIVE, 0),
+            (UserDisasterModel.registration_status == RegistrationStatus.EXPIRED, 1),
+            (UserDisasterModel.registration_status == RegistrationStatus.ARCHIVED, 2),
+            else_=3,
+        )
+
+        total_result = await self._session.execute(
+            select(func.count(UserDisasterModel.user_disaster_id)).where(
+                UserDisasterModel.user_id == user_id,
             )
         )
-        return result.scalar_one()
+        total_elements = int(total_result.scalar_one() or 0)
 
-    async def get_initial_recovery_stage_id(self) -> int:
-        result = await self._session.execute(
-            select(RecoveryStageMasterModel.recovery_stage_id).where(
-                RecoveryStageMasterModel.stage_code == "CHAOS"
-            )
-        )
-        return result.scalar_one()
-
-    async def create_user_disaster(
-        self, user_id: int, disaster_type_id: int, recovery_stage_id: int
-    ) -> int:
-        model = UserDisasterModel(
-            user_id=user_id,
-            disaster_type_id=disaster_type_id,
-            registration_status=RegistrationStatus.ACTIVE,
-            recovery_stage_id=recovery_stage_id,
-            recovery_progress=0.0,
-        )
-        self._session.add(model)
-        await self._session.flush()
-        await self._session.refresh(model)
-        return model.user_disaster_id
-
-    async def upsert_user_setting(self, user_id: int, user_disaster_id: int) -> None:
-        result = await self._session.execute(
-            select(UserSettingModel).where(UserSettingModel.user_id == user_id)
-        )
-        setting = result.scalar_one_or_none()
-        if setting is None:
-            self._session.add(UserSettingModel(user_id=user_id, user_disaster_id=user_disaster_id))
-        else:
-            setting.user_disaster_id = user_disaster_id
-        await self._session.flush()
-
-    async def create_impact(self, impact: DisasterImpact) -> DisasterImpact:
-        model = DisasterImpactModel(
-            user_disaster_id=impact.user_disaster_id,
-            safety_status=impact.safety_status,
-            residence_status=impact.residence_status,
-            injury_level=impact.injury_level,
-            psychological_anxiety=impact.psychological_anxiety,
-            onboarding_risk_level=impact.onboarding_risk_level,
-        )
-        self._session.add(model)
-        await self._session.flush()
-        await self._session.refresh(model)
-        return _model_to_entity(model)
-
-    async def create_flood_detail(self, detail: FloodDetail) -> None:
-        self._session.add(FloodImpactModel(**detail.__dict__))
-        await self._session.flush()
-
-    async def create_typhoon_detail(self, detail: TyphoonDetail) -> None:
-        self._session.add(TyphoonImpactModel(**detail.__dict__))
-        await self._session.flush()
-
-    async def create_earthquake_detail(self, detail: EarthquakeDetail) -> None:
-        self._session.add(EarthquakeImpactModel(**detail.__dict__))
-        await self._session.flush()
-
-    async def create_fire_detail(self, detail: FireDetail) -> None:
-        self._session.add(FireImpactModel(**detail.__dict__))
-        await self._session.flush()
-
-    async def update_context(
-        self, user_disaster_id: int, can_go_out: bool, available_time: str
-    ) -> Optional[DisasterImpact]:
-        result = await self._session.execute(
-            select(DisasterImpactModel).where(
-                DisasterImpactModel.user_disaster_id == user_disaster_id
-            )
-        )
-        model = result.scalar_one_or_none()
-        if model is None:
-            return None
-        model.can_go_out = can_go_out
-        model.available_time = available_time
-        await self._session.flush()
-        await self._session.refresh(model)
-        return _model_to_entity(model)
-
-    async def get_impact_full(
-        self, user_disaster_id: int
-    ) -> Optional[DisasterImpactFull]:
-        result = await self._session.execute(
-            select(DisasterImpactModel)
-            .where(DisasterImpactModel.user_disaster_id == user_disaster_id)
+        stmt = (
+            select(UserDisasterModel)
             .options(
-                selectinload(DisasterImpactModel.flood_detail),
-                selectinload(DisasterImpactModel.typhoon_detail),
-                selectinload(DisasterImpactModel.earthquake_detail),
-                selectinload(DisasterImpactModel.fire_detail),
+                joinedload(UserDisasterModel.disaster_type),
+                joinedload(UserDisasterModel.recovery_stage),
             )
+            .where(UserDisasterModel.user_id == user_id)
+            .order_by(order_priority, UserDisasterModel.registered_at.desc())
+            .offset(page * size)
+            .limit(size)
         )
-        model = result.scalar_one_or_none()
-        return _model_to_full(model) if model else None
+        result = await self._session.execute(stmt)
+        rows = result.scalars().all()
+
+        items = [
+            DisasterListItem(
+                user_disaster_id=row.user_disaster_id,
+                title=row.title,
+                disaster_type_code=row.disaster_type.disaster_code,
+                disaster_type_name=row.disaster_type.disaster_name,
+                status=row.registration_status.value,
+                occurred_at=row.registered_at,
+                ended_at=row.ended_at,
+                recovery_stage=RecoveryStageSnapshot(
+                    stage_code=row.recovery_stage.stage_code,
+                    stage_name=row.recovery_stage.stage_name,
+                ),
+                recovery_progress=row.recovery_progress,
+            )
+            for row in rows
+        ]
+        return DisasterListPage(
+            content=items,
+            page=page,
+            size=size,
+            total_elements=total_elements,
+        )
+
+    async def get_disaster_detail(self, *, user_id: int, user_disaster_id: int) -> DisasterDetail | None:
+        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        if row is None:
+            return None
+        return DisasterDetail(
+            user_disaster_id=row.user_disaster_id,
+            title=row.title,
+            disaster_type=DisasterTypeSnapshot(
+                disaster_type_id=row.disaster_type.disaster_type_id,
+                disaster_code=row.disaster_type.disaster_code,
+                name=row.disaster_type.disaster_name,
+            ),
+            status=row.registration_status.value,
+            occurred_at=row.registered_at,
+            ended_at=row.ended_at,
+            recovery_stage=RecoveryStageSnapshot(
+                stage_code=row.recovery_stage.stage_code,
+                stage_name=row.recovery_stage.stage_name,
+            ),
+            recovery_progress=row.recovery_progress,
+            impact=_to_impact_snapshot(row.impact),
+            detail=_to_detail_payload(row),
+        )
+
+    async def update_disaster(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        title: str | None = None,
+        occurred_at: datetime | None = None,
+        impact_updates: dict[str, object] | None = None,
+        detail_updates: dict[str, object] | None = None,
+    ) -> None:
+        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="존재하지 않는 재난입니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        if row.registration_status != RegistrationStatus.ACTIVE:
+            raise AppException(
+                status_code=409,
+                code=409,
+                message="ACTIVE 상태의 재난만 수정할 수 있습니다.",
+                error_key="DISASTER_NOT_EDITABLE",
+            )
+
+        if title is not None:
+            row.title = title
+        if occurred_at is not None:
+            row.registered_at = occurred_at
+        if impact_updates:
+            impact = self._upsert_impact(row, impact_updates)
+            if detail_updates:
+                self._upsert_detail(row, impact, detail_updates)
+        elif detail_updates:
+            impact = self._upsert_impact(row, {})
+            self._upsert_detail(row, impact, detail_updates)
+
+        await self._session.flush()
+
+    async def close_disaster(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        action: str,
+        ended_at: datetime | None,
+    ) -> tuple[str, datetime]:
+        row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="존재하지 않는 재난입니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        if row.registration_status != RegistrationStatus.ACTIVE:
+            raise AppException(
+                status_code=409,
+                code=409,
+                message="이미 종료되었거나 보관된 재난입니다.",
+                error_key="DISASTER_ALREADY_CLOSED",
+            )
+        resolved_ended_at = ended_at or datetime.utcnow()
+        row.ended_at = resolved_ended_at
+        row.registration_status = (
+            RegistrationStatus.EXPIRED if action == "CLOSE" else RegistrationStatus.ARCHIVED
+        )
+        await self._session.flush()
+        return row.registration_status.value, resolved_ended_at
+
+    async def _get_owned_disaster(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> UserDisasterModel | None:
+        result = await self._session.execute(
+            select(UserDisasterModel)
+            .options(
+                joinedload(UserDisasterModel.disaster_type),
+                joinedload(UserDisasterModel.recovery_stage),
+                joinedload(UserDisasterModel.impact).joinedload(DisasterImpactModel.flood_detail),
+                joinedload(UserDisasterModel.impact).joinedload(DisasterImpactModel.earthquake_detail),
+                joinedload(UserDisasterModel.impact).joinedload(DisasterImpactModel.typhoon_detail),
+                joinedload(UserDisasterModel.impact).joinedload(DisasterImpactModel.fire_detail),
+            )
+            .where(UserDisasterModel.user_disaster_id == user_disaster_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        if row.user_id != user_id:
+            raise AppException(
+                status_code=403,
+                code=403,
+                message="본인 재난만 접근할 수 있습니다.",
+                error_key="FORBIDDEN",
+            )
+        return row
+
+    def _upsert_impact(
+        self,
+        row: UserDisasterModel,
+        updates: dict[str, object],
+    ) -> DisasterImpactModel:
+        impact = row.impact
+        if impact is None:
+            impact = DisasterImpactModel(
+                user_disaster_id=row.user_disaster_id,
+                residence_status=ResidenceStatus.LIVABLE,
+                injury_level=InjuryLevel.NONE,
+            )
+            self._session.add(impact)
+            row.impact = impact
+
+        if "safety_status" in updates:
+            value = updates["safety_status"]
+            impact.safety_status = SafetyStatus(str(value)) if value is not None else None
+        if "residence_status" in updates and updates["residence_status"] is not None:
+            impact.residence_status = ResidenceStatus(str(updates["residence_status"]))
+        if "injury_level" in updates and updates["injury_level"] is not None:
+            impact.injury_level = InjuryLevel(str(updates["injury_level"]))
+        if "can_go_out" in updates:
+            value = updates["can_go_out"]
+            impact.can_go_out = bool(value) if value is not None else None
+        if "available_time" in updates:
+            value = updates["available_time"]
+            impact.available_time = AvailableTime(str(value)) if value is not None else None
+        return impact
+
+    def _upsert_detail(
+        self,
+        row: UserDisasterModel,
+        impact: DisasterImpactModel,
+        updates: dict[str, object],
+    ) -> None:
+        code = row.disaster_type.disaster_code
+        if code == "FLOOD":
+            detail = impact.flood_detail
+            if detail is None:
+                detail = FloodImpactModel(
+                    impact=impact,
+                    flood_level=FloodLevel.NONE,
+                    water_drain_status=WaterDrainStatus.STILL_PRESENT,
+                    damage_house=False,
+                    damage_vehicle=False,
+                    electric_problem=False,
+                    water_problem=False,
+                )
+                self._session.add(detail)
+                impact.flood_detail = detail
+            if "flood_level" in updates and updates["flood_level"] is not None:
+                detail.flood_level = FloodLevel(str(updates["flood_level"]))
+            if "water_drain_status" in updates and updates["water_drain_status"] is not None:
+                detail.water_drain_status = WaterDrainStatus(str(updates["water_drain_status"]))
+            if "damage_house" in updates and updates["damage_house"] is not None:
+                detail.damage_house = bool(updates["damage_house"])
+            if "damage_vehicle" in updates and updates["damage_vehicle"] is not None:
+                detail.damage_vehicle = bool(updates["damage_vehicle"])
+            if "electric_problem" in updates and updates["electric_problem"] is not None:
+                detail.electric_problem = bool(updates["electric_problem"])
+            if "water_problem" in updates and updates["water_problem"] is not None:
+                detail.water_problem = bool(updates["water_problem"])
+            return
+
+        if code == "EARTHQUAKE":
+            detail = impact.earthquake_detail
+            if detail is None:
+                detail = EarthquakeImpactModel(
+                    impact=impact,
+                    aftershock_feeling=AftershockFeeling.NONE,
+                    building_crack=False,
+                    house_damage=False,
+                    vehicle_damage=False,
+                    electric_problem=False,
+                    water_problem=False,
+                )
+                self._session.add(detail)
+                impact.earthquake_detail = detail
+            if "aftershock_feeling" in updates and updates["aftershock_feeling"] is not None:
+                detail.aftershock_feeling = AftershockFeeling(str(updates["aftershock_feeling"]))
+            if "building_crack" in updates and updates["building_crack"] is not None:
+                detail.building_crack = bool(updates["building_crack"])
+            if "house_damage" in updates and updates["house_damage"] is not None:
+                detail.house_damage = bool(updates["house_damage"])
+            if "vehicle_damage" in updates and updates["vehicle_damage"] is not None:
+                detail.vehicle_damage = bool(updates["vehicle_damage"])
+            if "electric_problem" in updates and updates["electric_problem"] is not None:
+                detail.electric_problem = bool(updates["electric_problem"])
+            if "water_problem" in updates and updates["water_problem"] is not None:
+                detail.water_problem = bool(updates["water_problem"])
+            return
+
+        if code == "TYPHOON":
+            detail = impact.typhoon_detail
+            if detail is None:
+                detail = TyphoonImpactModel(
+                    impact=impact,
+                    roof_damage=False,
+                    window_damage=False,
+                    structure_damage=False,
+                    vehicle_damage=False,
+                    electric_problem=False,
+                    water_problem=False,
+                )
+                self._session.add(detail)
+                impact.typhoon_detail = detail
+            for field in (
+                "roof_damage",
+                "window_damage",
+                "structure_damage",
+                "vehicle_damage",
+                "electric_problem",
+                "water_problem",
+            ):
+                if field in updates and updates[field] is not None:
+                    setattr(detail, field, bool(updates[field]))
+            return
+
+        if code == "FIRE":
+            detail = impact.fire_detail
+            if detail is None:
+                detail = FireImpactModel(
+                    impact=impact,
+                    fire_damage_scope=FireDamageScope.SMOKE_ONLY,
+                    smoke_inhalation=SmokeInhalation.NONE,
+                    house_damage=False,
+                    soot_damage=False,
+                    debris_exist=False,
+                    vehicle_damage=False,
+                    electric_problem=False,
+                    water_problem=False,
+                )
+                self._session.add(detail)
+                impact.fire_detail = detail
+            if "fire_damage_scope" in updates and updates["fire_damage_scope"] is not None:
+                detail.fire_damage_scope = FireDamageScope(str(updates["fire_damage_scope"]))
+            if "smoke_inhalation" in updates and updates["smoke_inhalation"] is not None:
+                detail.smoke_inhalation = SmokeInhalation(str(updates["smoke_inhalation"]))
+            for field in (
+                "house_damage",
+                "soot_damage",
+                "debris_exist",
+                "vehicle_damage",
+                "electric_problem",
+                "water_problem",
+            ):
+                if field in updates and updates[field] is not None:
+                    setattr(detail, field, bool(updates[field]))
