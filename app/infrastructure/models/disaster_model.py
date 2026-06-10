@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     func,
 )
@@ -129,6 +130,10 @@ class UserDisasterModel(TimestampMixin, Base):
         Integer, ForeignKey("recovery_stage_masters.recovery_stage_id"), nullable=False
     )
     recovery_progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # 발생 지역
+    latitude: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(Numeric(10, 7), nullable=True)
+    address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     user: Mapped["UserModel"] = relationship(back_populates="disasters")
     disaster_type: Mapped["DisasterTypeModel"] = relationship(back_populates="user_disasters")

@@ -46,6 +46,12 @@ class DisasterImpactResponse(BaseModel):
     availableTime: str | None
 
 
+class LocationResponse(BaseModel):
+    latitude: float | None = Field(default=None, description="발생 위치 위도")
+    longitude: float | None = Field(default=None, description="발생 위치 경도")
+    address: str | None = Field(default=None, description="발생 위치 주소")
+
+
 class DisasterDetailResponse(BaseModel):
     userDisasterId: int
     title: str | None
@@ -53,6 +59,10 @@ class DisasterDetailResponse(BaseModel):
     status: str
     occurredAt: datetime
     endedAt: datetime | None
+    location: LocationResponse | None = Field(
+        default=None,
+        description="발생 위치 정보(모두 비어 있으면 null)",
+    )
     recoveryStage: RecoveryStageResponse
     recoveryProgress: float
     impact: DisasterImpactResponse | None
@@ -158,6 +168,9 @@ class OnboardingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     disasterType: DisasterTypeEnum = Field(..., description="재난 유형 코드")
+    latitude: float | None = Field(default=None, description="발생 위치 위도")
+    longitude: float | None = Field(default=None, description="발생 위치 경도")
+    address: str | None = Field(default=None, description="발생 위치 주소")
     safetyStatus: SafetyStatusEnum | None = Field(default=None, description="안전 상태")
     residenceStatus: ResidenceStatusEnum = Field(..., description="거주지 상태")
     injuryLevel: InjuryLevelEnum = Field(..., description="부상 정도")
