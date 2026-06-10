@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from datetime import date, datetime
 from typing import Any
 
@@ -104,6 +105,12 @@ def _to_detail_payload(row: UserDisasterModel) -> dict[str, Any] | None:
     return None
 
 
+def _to_float_or_none(value: Decimal | float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
 class SqlAlchemyDisasterRepository(DisasterRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -176,6 +183,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
             status=row.registration_status.value,
             occurred_at=row.registered_at,
             ended_at=row.ended_at,
+            latitude=_to_float_or_none(row.latitude),
+            longitude=_to_float_or_none(row.longitude),
+            address=row.address,
             recovery_stage=RecoveryStageSnapshot(
                 stage_code=row.recovery_stage.stage_code,
                 stage_name=row.recovery_stage.stage_name,
@@ -261,6 +271,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         *,
         user_id: int,
         disaster_type: str,
+        latitude: float | None,
+        longitude: float | None,
+        address: str | None,
         safety_status: str | None,
         residence_status: str,
         injury_level: str,
@@ -313,6 +326,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
             recovery_stage=stage_row,
             registration_status=RegistrationStatus.ACTIVE,
             recovery_progress=0.0,
+            latitude=latitude,
+            longitude=longitude,
+            address=address,
         )
         self._session.add(user_disaster)
         await self._session.flush()

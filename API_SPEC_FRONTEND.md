@@ -362,6 +362,9 @@ Prefix: `/api/v1/disasters`
 ```json
 {
   "disasterType": "FLOOD",
+  "latitude": 37.5665,
+  "longitude": 126.978,
+  "address": "서울특별시 중구",
   "safetyStatus": "DAMAGED",
   "residenceStatus": "PARTIAL_DAMAGE",
   "injuryLevel": "MINOR",
@@ -386,6 +389,7 @@ Prefix: `/api/v1/disasters`
 
 - `damages` 배열은 재난 유형별 체크 인덱스를 사용합니다.
 - 홍수/지진/화재는 각각 추가 필수 필드가 있으며 누락 시 `400 MISSING_REQUIRED_FIELD` 입니다.
+- `latitude`, `longitude`, `address`는 optional 입니다. (미입력 시 `null` 저장)
 
 ## `GET /disasters/{userDisasterId}/recovery/stage`
 
@@ -489,6 +493,11 @@ Prefix: `/api/v1/disasters`
   "status": "ACTIVE",
   "occurredAt": "2026-02-24T09:00:00",
   "endedAt": null,
+  "location": {
+    "latitude": 37.5665,
+    "longitude": 126.978,
+    "address": "서울특별시 중구"
+  },
   "recoveryStage": {
     "stageCode": "CHAOS",
     "stageName": "혼란"
@@ -504,6 +513,10 @@ Prefix: `/api/v1/disasters`
   "detail": {}
 }
 ```
+
+노트:
+
+- 위치 3개 값(`latitude`, `longitude`, `address`)이 모두 비어있으면 `location`은 `null`로 반환됩니다.
 
 ## `PATCH /disasters/{userDisasterId}`
 
