@@ -205,8 +205,8 @@ async def get_recovery_graph(
     return RecoveryGraphResponse(
         userDisasterId=userDisasterId,
         points=[
-            RecoveryGraphPointResponse(date=d, stageCode=code, stageName=name)
-            for d, code, name in points
+            RecoveryGraphPointResponse(date=d, recoveryScore=score, stageCode=code, stageName=name)
+            for d, score, code, name in points
         ],
     )
 

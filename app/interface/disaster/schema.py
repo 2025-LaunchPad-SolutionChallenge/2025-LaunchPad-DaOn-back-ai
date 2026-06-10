@@ -185,6 +185,7 @@ class RecoveryStageDetailResponse(BaseModel):
 
 class RecoveryGraphPointResponse(BaseModel):
     date: date_type = Field(..., description="기준 일자")
+    recoveryScore: float | None = Field(default=None, description="회복 점수 (0.0~100.0), 피처 데이터 없으면 null")
     stageCode: str = Field(..., description="해당 일자의 단계 코드")
     stageName: str = Field(..., description="해당 일자의 단계 이름")
 

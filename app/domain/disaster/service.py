@@ -122,7 +122,7 @@ class DisasterService:
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> list[tuple[date, str, str]]:
+    ) -> list[tuple[date, float | None, str, str]]:
         return await self._disasters.get_recovery_graph_points(
             user_id=user_id,
             user_disaster_id=user_disaster_id,
