@@ -122,8 +122,19 @@ class DisasterService:
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> list[tuple[date, str, str]]:
+    ) -> list[tuple[date, float | None, str, str]]:
         return await self._disasters.get_recovery_graph_points(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+        )
+
+    async def get_latest_recovery_progress(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[float | None, str | None, str | None]:
+        return await self._disasters.get_latest_recovery_progress(
             user_id=user_id,
             user_disaster_id=user_disaster_id,
         )

@@ -37,7 +37,7 @@ from app.infrastructure.models.disaster_model import (
     UserDisasterModel,
     WaterDrainStatus,
 )
-from app.infrastructure.models.recovery_model import RecoveryOutputModel, RecoveryStageMasterModel
+from app.infrastructure.models.recovery_model import RecoveryFeatureModel, RecoveryOutputModel, RecoveryStageMasterModel
 from app.infrastructure.models.user_model import UserSettingModel
 
 
@@ -471,7 +471,7 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> list[tuple[date, str, str]]:
+    ) -> list[tuple[date, float | None, str, str]]:
         row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
         if row is None:
             raise AppException(
@@ -480,25 +480,62 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
                 message="해당 disasterId가 존재하지 않습니다.",
                 error_key="DISASTER_NOT_FOUND",
             )
-        stage_name_map = {
+        _STAGE_NAME = {
             "CHAOS": "혼란기",
             "STAGNANT": "정체기",
             "ATTEMPTING": "시도기",
             "STABLE": "안정기",
             "RECOVERY_MAINTAINED": "회복 유지기",
         }
+        _STAGE_BASE = {
+            "CHAOS": 0.0,
+            "STAGNANT": 20.0,
+            "ATTEMPTING": 40.0,
+            "STABLE": 60.0,
+            "RECOVERY_MAINTAINED": 80.0,
+        }
         result = await self._session.execute(
-            select(RecoveryOutputModel.state_date, RecoveryOutputModel.predicted_stage)
+            select(
+                RecoveryOutputModel.state_date,
+                RecoveryOutputModel.predicted_stage,
+                RecoveryFeatureModel.avg_7d_task_completion_rate,
+            )
+            .outerjoin(
+                RecoveryFeatureModel,
+                (RecoveryFeatureModel.user_disaster_id == user_disaster_id)
+                & (RecoveryFeatureModel.feature_date == RecoveryOutputModel.state_date),
+            )
             .where(RecoveryOutputModel.user_disaster_id == user_disaster_id)
             .order_by(RecoveryOutputModel.state_date.asc())
         )
         rows = result.all()
         if not rows:
             return []
-        return [
-            (state_date, stage_code, stage_name_map.get(stage_code, stage_code))
-            for state_date, stage_code in rows
-        ]
+
+        points = []
+        for state_date, stage_code, completion_rate in rows:
+            base = _STAGE_BASE.get(stage_code)
+            if base is not None and completion_rate is not None:
+                score = round(base + (completion_rate * 20), 1)
+            else:
+                score = None
+            points.append((state_date, score, stage_code, _STAGE_NAME.get(stage_code, stage_code)))
+        return points
+
+    async def get_latest_recovery_progress(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[float | None, str | None, str | None]:
+        points = await self.get_recovery_graph_points(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+        )
+        if not points:
+            return None, None, None
+        _, score, stage_code, stage_name = points[-1]
+        return score, stage_code, stage_name
 
     async def _get_owned_disaster(
         self,
