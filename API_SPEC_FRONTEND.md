@@ -700,6 +700,91 @@ AI 체크리스트 3개 생성
 }
 ```
 
+## `POST /disasters/{userDisasterId}/checklist/{checklistItemId}/attachments`
+
+체크리스트 첨부(메모/이미지/파일) 추가
+
+요청 예시 (메모):
+
+```json
+{
+  "attachmentType": "MEMO",
+  "content": "누전차단기 점검 완료, 사진은 저녁에 추가 예정",
+  "fileUrl": null,
+  "originalFileName": null,
+  "mimeType": null,
+  "fileSize": null,
+  "thumbnailUrl": null
+}
+```
+
+요청 예시 (이미지/파일):
+
+```json
+{
+  "attachmentType": "IMAGE",
+  "content": null,
+  "fileUrl": "https://firebasestorage.googleapis.com/...",
+  "originalFileName": "damage_photo_01.jpg",
+  "mimeType": "image/jpeg",
+  "fileSize": 348129,
+  "thumbnailUrl": "https://firebasestorage.googleapis.com/.../thumb.jpg"
+}
+```
+
+응답:
+
+```json
+{
+  "attachmentId": 301,
+  "message": "첨부가 추가되었습니다."
+}
+```
+
+노트:
+
+- `attachmentType`은 `MEMO | IMAGE | FILE` 입니다.
+- 메모는 `content` 중심, 파일형 첨부는 `fileUrl` 및 파일 메타데이터 중심으로 사용합니다.
+
+## `PATCH /disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}`
+
+체크리스트 첨부 부분 수정
+
+요청 예시:
+
+```json
+{
+  "content": "메모 문구 수정",
+  "fileUrl": null,
+  "originalFileName": null,
+  "mimeType": null,
+  "fileSize": null,
+  "thumbnailUrl": null
+}
+```
+
+응답:
+
+```json
+{
+  "attachmentId": 301,
+  "message": "첨부가 수정되었습니다."
+}
+```
+
+## `DELETE /disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}`
+
+체크리스트 첨부 삭제
+
+응답:
+
+```json
+{
+  "attachmentId": 301,
+  "message": "첨부가 삭제되었습니다."
+}
+```
+
 ## `PATCH /disasters/{userDisasterId}/checklist/{checklistItemId}/status`
 
 완료 상태 변경
