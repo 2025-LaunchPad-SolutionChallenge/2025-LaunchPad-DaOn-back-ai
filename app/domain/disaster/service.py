@@ -127,3 +127,14 @@ class DisasterService:
             user_id=user_id,
             user_disaster_id=user_disaster_id,
         )
+
+    async def get_latest_recovery_progress(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[float | None, str | None, str | None]:
+        return await self._disasters.get_latest_recovery_progress(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+        )

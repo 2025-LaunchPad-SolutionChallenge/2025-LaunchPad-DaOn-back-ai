@@ -522,6 +522,21 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
             points.append((state_date, score, stage_code, _STAGE_NAME.get(stage_code, stage_code)))
         return points
 
+    async def get_latest_recovery_progress(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[float | None, str | None, str | None]:
+        points = await self.get_recovery_graph_points(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+        )
+        if not points:
+            return None, None, None
+        _, score, stage_code, stage_name = points[-1]
+        return score, stage_code, stage_name
+
     async def _get_owned_disaster(
         self,
         *,

@@ -224,15 +224,15 @@ async def get_recovery_progress(
     disaster_service: DisasterService = Depends(get_disaster_service),
 ) -> RecoveryProgressResponse:
     user_id = int(payload["sub"])
-    detail = await disaster_service.get_disaster_detail(
+    score, stage_code, stage_name = await disaster_service.get_latest_recovery_progress(
         user_id=user_id,
         user_disaster_id=userDisasterId,
     )
     return RecoveryProgressResponse(
         userDisasterId=userDisasterId,
-        recoveryProgress=detail.recovery_progress,
-        stageCode=detail.recovery_stage.stage_code,
-        stageName=detail.recovery_stage.stage_name,
+        recoveryScore=score,
+        stageCode=stage_code,
+        stageName=stage_name,
     )
 
 
