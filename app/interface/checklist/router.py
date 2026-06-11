@@ -29,6 +29,7 @@ from app.interface.checklist.schema import (
     ChecklistMutationResponse,
     ChecklistPatchRequest,
     GeneratedItemInfo,
+    WeeklyChecklistRateResponse,
 )
 
 router = APIRouter(tags=["checklists"])
@@ -139,6 +140,35 @@ async def create_checklist_item(
     return ChecklistMutationResponse(
         checklistItemId=item_id,
         message="체크리스트 항목이 추가되었습니다.",
+    )
+
+
+@router.get(
+    "/disasters/{userDisasterId}/checklist/weekly-rate",
+    response_model=WeeklyChecklistRateResponse,
+    summary="주간 체크리스트 달성률 조회",
+    description="이번 주(월~일) 기준 체크리스트 총 개수, 완료 개수, 달성률을 조회합니다.",
+    responses=error_responses(401, 403, 404, 409, 500),
+)
+async def get_weekly_checklist_rate(
+    userDisasterId: int,
+    payload: dict[str, Any] = Depends(get_current_access_payload),
+    checklist_service: ChecklistService = Depends(get_checklist_service),
+) -> WeeklyChecklistRateResponse:
+    user_id = int(payload["sub"])
+    week_start, week_end, total_tasks, completed_tasks, completion_rate = (
+        await checklist_service.get_weekly_completion_stats(
+            user_id=user_id,
+            user_disaster_id=userDisasterId,
+        )
+    )
+    return WeeklyChecklistRateResponse(
+        userDisasterId=userDisasterId,
+        weekStartDate=week_start.isoformat(),
+        weekEndDate=week_end.isoformat(),
+        totalTasks=total_tasks,
+        completedTasks=completed_tasks,
+        weeklyCompletionRate=completion_rate,
     )
 
 
