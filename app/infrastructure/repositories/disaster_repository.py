@@ -49,6 +49,14 @@ _STAGE_INFO: dict[str, tuple[int, str, str, str]] = {
     "RECOVERY_MAINTAINED": (5, "RECOVERY_MAINTAINED", "회복 유지기", "회복된 일상을 안정적으로 유지하고 있어요."),
 }
 
+_STAGE_BASE: dict[str, float] = {
+    "CHAOS": 0.0,
+    "STAGNANT": 20.0,
+    "ATTEMPTING": 40.0,
+    "STABLE": 60.0,
+    "RECOVERY_MAINTAINED": 80.0,
+}
+
 
 def _to_impact_snapshot(impact: DisasterImpactModel | None) -> ImpactSnapshot | None:
     if impact is None:
@@ -492,20 +500,6 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
                 message="해당 disasterId가 존재하지 않습니다.",
                 error_key="DISASTER_NOT_FOUND",
             )
-        _STAGE_NAME = {
-            "CHAOS": "혼란기",
-            "STAGNANT": "정체기",
-            "ATTEMPTING": "시도기",
-            "STABLE": "안정기",
-            "RECOVERY_MAINTAINED": "회복 유지기",
-        }
-        _STAGE_BASE = {
-            "CHAOS": 0.0,
-            "STAGNANT": 20.0,
-            "ATTEMPTING": 40.0,
-            "STABLE": 60.0,
-            "RECOVERY_MAINTAINED": 80.0,
-        }
         result = await self._session.execute(
             select(
                 RecoveryOutputModel.state_date,
@@ -531,7 +525,7 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
                 score = round(base + (completion_rate * 20), 1)
             else:
                 score = None
-            points.append((state_date, score, stage_code, _STAGE_NAME.get(stage_code, stage_code)))
+            points.append((state_date, score, stage_code, _STAGE_INFO.get(stage_code, _STAGE_INFO["CHAOS"])[2]))
         return points
 
     async def get_latest_recovery_progress(
