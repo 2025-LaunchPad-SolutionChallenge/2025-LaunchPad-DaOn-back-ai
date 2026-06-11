@@ -11,9 +11,10 @@ from app.infrastructure.models.checklist_model import ChecklistItemModel
 from app.infrastructure.models.disaster_model import DisasterTypeModel
 from app.infrastructure.models.disaster_model import UserDisasterModel
 from app.infrastructure.models.disaster_model import RegistrationStatus
-from app.infrastructure.models.recovery_model import DailyStatusCheckModel
+from app.infrastructure.models.recovery_model import DailyStatusCheckModel, RecoveryFeatureModel, RecoveryOutputModel
 from app.infrastructure.models.recovery_model import RecoveryStageMasterModel
 from app.infrastructure.models.user_model import UserModel
+from app.infrastructure.repositories.disaster_repository import _STAGE_BASE
 
 
 def _model_to_entity(model: DailyStatusCheckModel) -> DailyStatusCheck:
@@ -150,6 +151,28 @@ class SQLHomeRepository(HomeRepository):
         )
         has_daily_status = status_result.scalar_one_or_none() is not None
 
+        latest_output = await self._session.execute(
+            select(
+                RecoveryOutputModel.predicted_stage,
+                RecoveryFeatureModel.avg_7d_task_completion_rate,
+            )
+            .outerjoin(
+                RecoveryFeatureModel,
+                (RecoveryFeatureModel.user_disaster_id == user_disaster.user_disaster_id)
+                & (RecoveryFeatureModel.feature_date == RecoveryOutputModel.state_date),
+            )
+            .where(RecoveryOutputModel.user_disaster_id == user_disaster.user_disaster_id)
+            .order_by(RecoveryOutputModel.state_date.desc())
+            .limit(1)
+        )
+        latest = latest_output.one_or_none()
+        if latest is None:
+            recovery_score = 0.0
+        else:
+            stage_code, completion_rate = latest
+            base = _STAGE_BASE.get(stage_code, 0.0)
+            recovery_score = round(base + (completion_rate * 20), 1) if completion_rate is not None else base
+
         return HomeSummary(
             user_disaster_id=int(user_disaster.user_disaster_id),
             user_name=user_name,
@@ -157,7 +180,7 @@ class SQLHomeRepository(HomeRepository):
             disaster_type_name=disaster_type_name,
             occurred_at=user_disaster.registered_at,
             recovery_stage_name=stage.stage_name,
-            recovery_progress=float(user_disaster.recovery_progress),
+            recovery_progress=recovery_score,
             today_total_tasks=today_total_tasks,
             today_completed_tasks=today_completed_tasks,
             daily_status_checked=has_daily_status,
