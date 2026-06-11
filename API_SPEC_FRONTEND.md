@@ -599,7 +599,8 @@ Prefix: `/api/v1/checklists`
   "userDisasterId": 10,
   "userCondition": {
     "canGoOut": true,
-    "availableTime": "ONE_TO_THREE_HOURS"
+    "availableTime": "ONE_TO_THREE_HOURS",
+    "specialNotes": "저녁 시간대만 외출 가능"
   }
 }
 ```
@@ -611,6 +612,10 @@ Prefix: `/api/v1/checklists`
   "message": "상황 입력 완료"
 }
 ```
+
+노트:
+
+- `specialNotes`는 optional 자유 입력 필드입니다.
 
 ## `POST /checklists/ai-generate`
 
