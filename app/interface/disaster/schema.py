@@ -213,3 +213,4 @@ class RecoveryProgressResponse(BaseModel):
     recoveryScore: float | None = Field(default=None, description="현재 회복 점수 (0.0~100.0), 데이터 없으면 null")
     stageCode: str | None = Field(default=None, description="현재 단계 코드")
     stageName: str | None = Field(default=None, description="현재 단계 이름")
+    stageDescription: str | None = Field(default=None, description="현재 단계 설명")
