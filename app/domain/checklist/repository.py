@@ -143,8 +143,10 @@ class ChecklistRepository(ABC):
     async def get_weekly_completion_stats(
         self,
         *,
-        user_id: int,
         user_disaster_id: int,
         week_start_date: date,
         week_end_date: date,
     ) -> tuple[int, int]: ...
+
+    @abstractmethod
+    async def get_active_user_disaster_id(self, user_id: int) -> int | None: ...

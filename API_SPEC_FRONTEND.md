@@ -902,27 +902,26 @@ AI 체크리스트 3개 생성
 }
 ```
 
-## `GET /disasters/{userDisasterId}/checklist/weekly-rate`
+## `GET /checklists/weekly-progress?date={date}`
 
-주간 체크리스트 달성률 조회(이번 주 월~일 기준)
+기준 날짜(`date`)까지의 최근 7일(기준일 포함) 체크리스트 진행률 조회
 
 응답:
 
 ```json
 {
-  "userDisasterId": 10,
-  "weekStartDate": "2026-06-08",
-  "weekEndDate": "2026-06-14",
-  "totalTasks": 12,
-  "completedTasks": 7,
-  "weeklyCompletionRate": 58.3
+  "weekStart": "2026-04-10",
+  "weekEnd": "2026-04-19",
+  "completionRate": 65.0
 }
 ```
 
 노트:
 
-- 활성 재난(`ACTIVE`) 기준으로 집계합니다.
-- `weeklyCompletionRate`는 소수점 1자리 반올림이며, `totalTasks`가 0이면 `0.0`입니다.
+- 쿼리 파라미터 `date`는 필수이며 형식은 `YYYY-MM-DD`입니다.
+- 집계 구간은 `date - 6일`부터 `date`까지(총 7일)입니다.
+- 집계는 로그인 사용자의 활성 재난(`ACTIVE`) 기준으로 수행됩니다.
+- `completionRate`는 퍼센트 값이며 소수점 1자리 반올림입니다.
 
 ## `GET /disasters/{userDisasterId}/archives?type=ALL&date=...&cursor=...&limit=20`
 
@@ -1084,7 +1083,7 @@ Prefix: `/api/v1/home`
 ## 8) 프론트 구현 시 주의사항
 
 - 체크리스트는 `/disasters/{userDisasterId}/checklist*`와 `/checklists/context`, `/checklists/ai-generate`를 함께 사용합니다.
-- 주간 달성률은 `/disasters/{userDisasterId}/checklist/weekly-rate`에서 조회합니다.
+- 주간 진행률은 `/checklists/weekly-progress?date=YYYY-MM-DD`에서 조회합니다.
 - Home API는 camelCase 응답(`todayTotalTasks`)입니다.
 - `GET /home/summary`는 `userName`, `occurredAt`을 포함합니다.
 - checklist 상세의 `isAiGenerated`는 `item_source_type == "AI_GENERATED"` 기준입니다.
@@ -1101,5 +1100,5 @@ Prefix: `/api/v1/home`
 4. `POST /api/v1/disasters/{userDisasterId}/checklist`
 5. `PATCH /api/v1/disasters/{userDisasterId}/checklist/{checklistItemId}/status`
 6. `GET /api/v1/disasters/{userDisasterId}/checklist/{checklistItemId}`
-7. `GET /api/v1/disasters/{userDisasterId}/checklist/weekly-rate`
+7. `GET /api/v1/checklists/weekly-progress?date=2026-04-16`
 
