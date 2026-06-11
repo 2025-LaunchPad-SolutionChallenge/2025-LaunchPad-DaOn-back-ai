@@ -539,16 +539,17 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> tuple[float | None, str | None, str | None, str | None]:
+    ) -> tuple[float, str, str, str]:
+        _default = (0.0, "CHAOS", "혼란기", _STAGE_INFO["CHAOS"][3])
         points = await self.get_recovery_graph_points(
             user_id=user_id,
             user_disaster_id=user_disaster_id,
         )
         if not points:
-            return None, None, None, None
+            return _default
         _, score, stage_code, stage_name = points[-1]
         description = _STAGE_INFO.get(stage_code, _STAGE_INFO["CHAOS"])[3]
-        return score, stage_code, stage_name, description
+        return score if score is not None else 0.0, stage_code, stage_name, description
 
     async def _get_owned_disaster(
         self,
