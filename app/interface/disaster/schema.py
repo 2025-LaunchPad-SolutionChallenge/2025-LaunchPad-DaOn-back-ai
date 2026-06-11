@@ -47,9 +47,21 @@ class DisasterImpactResponse(BaseModel):
 
 
 class LocationResponse(BaseModel):
-    latitude: float | None = Field(default=None, description="발생 위치 위도")
-    longitude: float | None = Field(default=None, description="발생 위치 경도")
-    address: str | None = Field(default=None, description="발생 위치 주소")
+    latitude: float | None = Field(
+        default=None,
+        description="발생 위치 위도",
+        examples=[37.5665],
+    )
+    longitude: float | None = Field(
+        default=None,
+        description="발생 위치 경도",
+        examples=[126.9780],
+    )
+    address: str | None = Field(
+        default=None,
+        description="발생 위치 주소",
+        examples=["서울특별시 중구"],
+    )
 
 
 class DisasterDetailResponse(BaseModel):
@@ -62,6 +74,7 @@ class DisasterDetailResponse(BaseModel):
     location: LocationResponse | None = Field(
         default=None,
         description="발생 위치 정보(모두 비어 있으면 null)",
+        examples=[{"latitude": 37.5665, "longitude": 126.9780, "address": "서울특별시 중구"}],
     )
     recoveryStage: RecoveryStageResponse
     recoveryProgress: float
