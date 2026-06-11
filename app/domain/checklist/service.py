@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 
 from app.common.exceptions import AppException
@@ -363,6 +363,24 @@ class ChecklistService:
             for title in titles[:3]
         ]
         return await self._checklists.save_items(items)
+
+    async def get_weekly_completion_stats(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[date, date, int, int, float]:
+        today = date.today()
+        week_start = today - timedelta(days=today.weekday())
+        week_end = week_start + timedelta(days=6)
+        total_tasks, completed_tasks = await self._checklists.get_weekly_completion_stats(
+            user_id=user_id,
+            user_disaster_id=user_disaster_id,
+            week_start_date=week_start,
+            week_end_date=week_end,
+        )
+        completion_rate = 0.0 if total_tasks == 0 else round((completed_tasks / total_tasks) * 100, 1)
+        return week_start, week_end, total_tasks, completed_tasks, completion_rate
 
     def _build_ai_prompt(self, impact_full: dict[str, object], *, special_notes: str | None = None) -> str:
         disaster_type = str(impact_full.get("disaster_type", "")).upper()
