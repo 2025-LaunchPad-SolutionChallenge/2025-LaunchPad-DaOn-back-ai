@@ -127,13 +127,10 @@ class ChecklistListResponse(BaseModel):
     days: list[ChecklistListDayResponse] = Field(..., description="날짜별 집계 목록")
 
 
-class WeeklyChecklistRateResponse(BaseModel):
-    userDisasterId: int = Field(..., description="재난 ID")
-    weekStartDate: str = Field(..., description="주간 시작일(월요일, yyyy-MM-dd)")
-    weekEndDate: str = Field(..., description="주간 종료일(일요일, yyyy-MM-dd)")
-    totalTasks: int = Field(..., description="주간 전체 체크리스트 개수")
-    completedTasks: int = Field(..., description="주간 완료 체크리스트 개수")
-    weeklyCompletionRate: float = Field(..., description="주간 체크리스트 달성률(%)")
+class WeeklyProgressResponse(BaseModel):
+    weekStart: str = Field(..., description="주간 시작일(월요일, yyyy-MM-dd)")
+    weekEnd: str = Field(..., description="주간 종료일(일요일, yyyy-MM-dd)")
+    completionRate: float = Field(..., description="주간 체크리스트 달성률(%)")
 
 
 class ArchiveListItemResponse(BaseModel):

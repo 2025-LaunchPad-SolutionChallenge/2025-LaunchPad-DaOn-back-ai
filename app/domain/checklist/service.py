@@ -368,13 +368,20 @@ class ChecklistService:
         self,
         *,
         user_id: int,
-        user_disaster_id: int,
+        target_date: date,
     ) -> tuple[date, date, int, int, float]:
-        today = date.today()
-        week_start = today - timedelta(days=today.weekday())
-        week_end = week_start + timedelta(days=6)
+        user_disaster_id = await self._checklists.get_active_user_disaster_id(user_id)
+        if user_disaster_id is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="활성화된 재난 정보가 없습니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        # 프론트에서 전달한 기준일(target_date)을 포함한 최근 7일 범위
+        week_end = target_date
+        week_start = target_date - timedelta(days=6)
         total_tasks, completed_tasks = await self._checklists.get_weekly_completion_stats(
-            user_id=user_id,
             user_disaster_id=user_disaster_id,
             week_start_date=week_start,
             week_end_date=week_end,

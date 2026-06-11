@@ -29,7 +29,7 @@ from app.interface.checklist.schema import (
     ChecklistMutationResponse,
     ChecklistPatchRequest,
     GeneratedItemInfo,
-    WeeklyChecklistRateResponse,
+    WeeklyProgressResponse,
 )
 
 router = APIRouter(tags=["checklists"])
@@ -144,31 +144,30 @@ async def create_checklist_item(
 
 
 @router.get(
-    "/disasters/{userDisasterId}/checklist/weekly-rate",
-    response_model=WeeklyChecklistRateResponse,
-    summary="주간 체크리스트 달성률 조회",
-    description="이번 주(월~일) 기준 체크리스트 총 개수, 완료 개수, 달성률을 조회합니다.",
-    responses=error_responses(401, 403, 404, 409, 500),
+    "/checklists/weekly-progress",
+    response_model=WeeklyProgressResponse,
+    summary="주간 체크리스트 진행률 조회",
+    description="date를 기준으로 이전 7일(기준일 포함)의 체크리스트 달성률을 조회합니다.",
+    responses=error_responses(400, 401, 404, 409, 500),
 )
-async def get_weekly_checklist_rate(
-    userDisasterId: int,
+async def get_weekly_progress(
+    date_value: str = Query(..., alias="date"),
     payload: dict[str, Any] = Depends(get_current_access_payload),
     checklist_service: ChecklistService = Depends(get_checklist_service),
-) -> WeeklyChecklistRateResponse:
+) -> WeeklyProgressResponse:
     user_id = int(payload["sub"])
+    target_date = _parse_query_date_or_400("date", date_value)
+    assert target_date is not None
     week_start, week_end, total_tasks, completed_tasks, completion_rate = (
         await checklist_service.get_weekly_completion_stats(
             user_id=user_id,
-            user_disaster_id=userDisasterId,
+            target_date=target_date,
         )
     )
-    return WeeklyChecklistRateResponse(
-        userDisasterId=userDisasterId,
-        weekStartDate=week_start.isoformat(),
-        weekEndDate=week_end.isoformat(),
-        totalTasks=total_tasks,
-        completedTasks=completed_tasks,
-        weeklyCompletionRate=completion_rate,
+    return WeeklyProgressResponse(
+        weekStart=week_start.isoformat(),
+        weekEnd=week_end.isoformat(),
+        completionRate=completion_rate,
     )
 
 
