@@ -672,6 +672,28 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
         impact.special_notes = special_notes
         await self._session.flush()
 
+    async def get_weekly_completion_stats(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+        week_start_date: date,
+        week_end_date: date,
+    ) -> tuple[int, int]:
+        await self._assert_active_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
+        result = await self._session.execute(
+            select(
+                func.count(ChecklistItemModel.checklist_item_id),
+                func.sum(case((ChecklistItemModel.is_completed.is_(True), 1), else_=0)),
+            ).where(
+                ChecklistItemModel.user_disaster_id == user_disaster_id,
+                ChecklistItemModel.checklist_date >= week_start_date,
+                ChecklistItemModel.checklist_date <= week_end_date,
+            )
+        )
+        total_tasks, completed_tasks = result.one()
+        return int(total_tasks or 0), int(completed_tasks or 0)
+
     async def _get_owned_disaster(
         self,
         *,
