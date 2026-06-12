@@ -21,6 +21,7 @@ class DisasterListItemResponse(BaseModel):
     status: str
     occurredAt: datetime
     endedAt: datetime | None
+    address: str | None
     recoveryStage: RecoveryStageResponse
     recoveryProgress: float
 

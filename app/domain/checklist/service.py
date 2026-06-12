@@ -439,14 +439,17 @@ class ChecklistService:
             return ["가족 지인에게 안전 연락하기", "파손된 물건 사진 찍어두기", "식수 및 비상식량 확인하기"]
 
         try:
-            import google.generativeai as genai
+            import google.genai as genai
+            from google.genai import types
 
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(
-                "gemini-3.5-flash",
-                generation_config={"response_mime_type": "application/json"},
+            client = genai.Client(api_key=api_key)
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                ),
             )
-            response = model.generate_content(prompt)
             payload = json.loads(response.text)
             titles = [str(item.get("title", "")).strip() for item in payload if isinstance(item, dict)]
             titles = [t for t in titles if t]

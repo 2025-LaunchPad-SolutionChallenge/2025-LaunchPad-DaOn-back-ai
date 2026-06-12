@@ -20,6 +20,7 @@ class DisasterListItem:
     status: str
     occurred_at: datetime
     ended_at: datetime | None
+    address: str | None
     recovery_stage: RecoveryStageSnapshot
     recovery_progress: float
 
