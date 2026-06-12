@@ -41,6 +41,9 @@ class DisasterRepository(ABC):
         *,
         user_id: int,
         disaster_type: str,
+        latitude: float | None,
+        longitude: float | None,
+        address: str | None,
         safety_status: str | None,
         residence_status: str,
         injury_level: str,
@@ -66,4 +69,12 @@ class DisasterRepository(ABC):
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> list[tuple[date, str, str]]: ...
+    ) -> list[tuple[date, float | None, str, str]]: ...
+
+    @abstractmethod
+    async def get_latest_recovery_progress(
+        self,
+        *,
+        user_id: int,
+        user_disaster_id: int,
+    ) -> tuple[float, str, str, str]: ...

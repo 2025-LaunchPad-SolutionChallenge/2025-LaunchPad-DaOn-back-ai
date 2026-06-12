@@ -5,6 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.user.entity import User, UserProfile
 from app.domain.user.repository import UserRepository
+from app.infrastructure.models.checklist_model import ArchiveItemModel
+from app.infrastructure.models.community_model import CommunityPostModel
+from app.infrastructure.models.user_model import UserSettingModel
 from app.infrastructure.models.user_model import (
     ProviderType,
     UserAuthProviderModel,
@@ -62,6 +65,19 @@ class SqlAlchemyUserRepository(UserRepository):
         return _to_domain(model)
 
     async def delete(self, user_id: int) -> None:
+        # 탈퇴 시 FK 제약을 만족하도록 수동 참조부터 정리한다.
+        # archive_items.user_setting_id -> user_settings.user_setting_id (NO ACTION)
+        await self._session.execute(
+            delete(ArchiveItemModel).where(
+                ArchiveItemModel.user_setting_id.in_(
+                    select(UserSettingModel.user_setting_id).where(UserSettingModel.user_id == user_id)
+                )
+            )
+        )
+        # user_settings.user__disaster_id -> user_disasters.user__disaster_id (NO ACTION)
+        await self._session.execute(delete(UserSettingModel).where(UserSettingModel.user_id == user_id))
+        # community_posts.user_id / user__disaster_id / residence_id FK도 선제 정리
+        await self._session.execute(delete(CommunityPostModel).where(CommunityPostModel.user_id == user_id))
         await self._session.execute(delete(UserModel).where(UserModel.user_id == user_id))
         await self._session.flush()
 

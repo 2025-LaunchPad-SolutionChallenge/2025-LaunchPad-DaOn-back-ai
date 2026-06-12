@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 
 from app.common.exceptions import AppException
@@ -364,6 +364,31 @@ class ChecklistService:
         ]
         return await self._checklists.save_items(items)
 
+    async def get_weekly_completion_stats(
+        self,
+        *,
+        user_id: int,
+        target_date: date,
+    ) -> tuple[date, date, int, int, float]:
+        user_disaster_id = await self._checklists.get_active_user_disaster_id(user_id)
+        if user_disaster_id is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="활성화된 재난 정보가 없습니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        # 프론트에서 전달한 기준일(target_date)을 포함한 최근 7일 범위
+        week_end = target_date
+        week_start = target_date - timedelta(days=6)
+        total_tasks, completed_tasks = await self._checklists.get_weekly_completion_stats(
+            user_disaster_id=user_disaster_id,
+            week_start_date=week_start,
+            week_end_date=week_end,
+        )
+        completion_rate = 0.0 if total_tasks == 0 else round((completed_tasks / total_tasks) * 100, 1)
+        return week_start, week_end, total_tasks, completed_tasks, completion_rate
+
     def _build_ai_prompt(self, impact_full: dict[str, object], *, special_notes: str | None = None) -> str:
         disaster_type = str(impact_full.get("disaster_type", "")).upper()
         safety_status = str(impact_full.get("safety_status") or "")
@@ -422,6 +447,7 @@ class ChecklistService:
                 generation_config={"response_mime_type": "application/json"},
             )
             response = model.generate_content(prompt)
+            print(f"[Gemini OK] tokens_used={getattr(response.usage_metadata, 'total_token_count', 'N/A')}")
             payload = json.loads(response.text)
             titles = [str(item.get("title", "")).strip() for item in payload if isinstance(item, dict)]
             titles = [t for t in titles if t]

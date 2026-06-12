@@ -672,6 +672,39 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
         impact.special_notes = special_notes
         await self._session.flush()
 
+    async def get_weekly_completion_stats(
+        self,
+        *,
+        user_disaster_id: int,
+        week_start_date: date,
+        week_end_date: date,
+    ) -> tuple[int, int]:
+        await self._assert_active_disaster_exists(user_disaster_id=user_disaster_id)
+        result = await self._session.execute(
+            select(
+                func.count(ChecklistItemModel.checklist_item_id),
+                func.sum(case((ChecklistItemModel.is_completed.is_(True), 1), else_=0)),
+            ).where(
+                ChecklistItemModel.user_disaster_id == user_disaster_id,
+                ChecklistItemModel.checklist_date >= week_start_date,
+                ChecklistItemModel.checklist_date <= week_end_date,
+            )
+        )
+        total_tasks, completed_tasks = result.one()
+        return int(total_tasks or 0), int(completed_tasks or 0)
+
+    async def get_active_user_disaster_id(self, user_id: int) -> int | None:
+        result = await self._session.execute(
+            select(UserDisasterModel.user_disaster_id).where(
+                UserDisasterModel.user_id == user_id,
+                UserDisasterModel.registration_status == RegistrationStatus.ACTIVE,
+            )
+        )
+        row = result.first()
+        if row is None:
+            return None
+        return int(row[0])
+
     async def _get_owned_disaster(
         self,
         *,
@@ -789,6 +822,31 @@ class SqlAlchemyChecklistRepository(ChecklistRepository):
                 status_code=409,
                 code=409,
                 message="ACTIVE 상태 재난만 수정할 수 있습니다.",
+                error_key="DISASTER_NOT_ACTIVE",
+            )
+        return row
+
+    async def _assert_active_disaster_exists(
+        self,
+        *,
+        user_disaster_id: int,
+    ) -> UserDisasterModel:
+        result = await self._session.execute(
+            select(UserDisasterModel).where(UserDisasterModel.user_disaster_id == user_disaster_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AppException(
+                status_code=404,
+                code=404,
+                message="존재하지 않는 재난입니다.",
+                error_key="DISASTER_NOT_FOUND",
+            )
+        if row.registration_status != RegistrationStatus.ACTIVE:
+            raise AppException(
+                status_code=409,
+                code=409,
+                message="ACTIVE 상태 재난만 조회할 수 있습니다.",
                 error_key="DISASTER_NOT_ACTIVE",
             )
         return row

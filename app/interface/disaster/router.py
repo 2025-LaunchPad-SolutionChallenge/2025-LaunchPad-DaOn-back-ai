@@ -18,6 +18,7 @@ from app.interface.disaster.schema import (
     DisasterPatchRequest,
     DisasterPatchResponse,
     DisasterTypeResponse,
+    LocationResponse,
     OnboardingRequest,
     OnboardingResponse,
     RecoveryGraphPointResponse,
@@ -41,6 +42,7 @@ def _to_list_response(page_data: DisasterListPage) -> DisasterListResponse:
                 status=item.status,
                 occurredAt=item.occurred_at,
                 endedAt=item.ended_at,
+                address=item.address,
                 recoveryStage=RecoveryStageResponse(
                     stageCode=item.recovery_stage.stage_code,
                     stageName=item.recovery_stage.stage_name,
@@ -56,6 +58,13 @@ def _to_list_response(page_data: DisasterListPage) -> DisasterListResponse:
 
 
 def _to_detail_response(detail: DisasterDetail) -> DisasterDetailResponse:
+    location = None
+    if detail.latitude is not None or detail.longitude is not None or detail.address is not None:
+        location = LocationResponse(
+            latitude=detail.latitude,
+            longitude=detail.longitude,
+            address=detail.address,
+        )
     return DisasterDetailResponse(
         userDisasterId=detail.user_disaster_id,
         title=detail.title,
@@ -67,6 +76,7 @@ def _to_detail_response(detail: DisasterDetail) -> DisasterDetailResponse:
         status=detail.status,
         occurredAt=detail.occurred_at,
         endedAt=detail.ended_at,
+        location=location,
         recoveryStage=RecoveryStageResponse(
             stageCode=detail.recovery_stage.stage_code,
             stageName=detail.recovery_stage.stage_name,
@@ -110,7 +120,7 @@ async def list_disasters(
     response_model=OnboardingResponse,
     status_code=201,
     summary="재난 온보딩 등록",
-    description="초기 재난 영향 정보를 등록하고 사용자 재난을 생성합니다.",
+    description="초기 재난 영향 정보와 발생 위치(위도/경도/주소)를 등록하고 사용자 재난을 생성합니다.",
     responses=error_responses(400, 401, 500),
 )
 async def submit_onboarding(
@@ -122,6 +132,9 @@ async def submit_onboarding(
     user_disaster_id, impact_id, onboarding_risk_level = await disaster_service.submit_onboarding(
         user_id=user_id,
         disaster_type=req.disasterType.value,
+        latitude=req.latitude,
+        longitude=req.longitude,
+        address=req.address,
         safety_status=req.safetyStatus.value if req.safetyStatus else None,
         residence_status=req.residenceStatus.value,
         injury_level=req.injuryLevel.value,
@@ -144,7 +157,7 @@ async def submit_onboarding(
     "/{userDisasterId}",
     response_model=DisasterDetailResponse,
     summary="재난 상세 조회",
-    description="특정 재난의 영향(impact)과 유형별 상세(detail)를 조회합니다.",
+    description="특정 재난의 발생 위치(location), 영향(impact), 유형별 상세(detail)를 조회합니다.",
     responses=error_responses(401, 403, 404, 500),
 )
 async def get_disaster_detail(
@@ -205,8 +218,8 @@ async def get_recovery_graph(
     return RecoveryGraphResponse(
         userDisasterId=userDisasterId,
         points=[
-            RecoveryGraphPointResponse(date=d, stageCode=code, stageName=name)
-            for d, code, name in points
+            RecoveryGraphPointResponse(date=d, recoveryScore=score, stageCode=code, stageName=name)
+            for d, score, code, name in points
         ],
     )
 
@@ -224,15 +237,16 @@ async def get_recovery_progress(
     disaster_service: DisasterService = Depends(get_disaster_service),
 ) -> RecoveryProgressResponse:
     user_id = int(payload["sub"])
-    detail = await disaster_service.get_disaster_detail(
+    score, stage_code, stage_name, stage_description = await disaster_service.get_latest_recovery_progress(
         user_id=user_id,
         user_disaster_id=userDisasterId,
     )
     return RecoveryProgressResponse(
         userDisasterId=userDisasterId,
-        recoveryProgress=detail.recovery_progress,
-        stageCode=detail.recovery_stage.stage_code,
-        stageName=detail.recovery_stage.stage_name,
+        recoveryScore=score,
+        stageCode=stage_code,
+        stageName=stage_name,
+        stageDescription=stage_description,
     )
 
 

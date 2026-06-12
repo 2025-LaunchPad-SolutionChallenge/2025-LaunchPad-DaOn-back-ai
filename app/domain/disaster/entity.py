@@ -20,6 +20,7 @@ class DisasterListItem:
     status: str
     occurred_at: datetime
     ended_at: datetime | None
+    address: str | None
     recovery_stage: RecoveryStageSnapshot
     recovery_progress: float
 
@@ -57,6 +58,9 @@ class DisasterDetail:
     status: str
     occurred_at: datetime
     ended_at: datetime | None
+    latitude: float | None
+    longitude: float | None
+    address: str | None
     recovery_stage: RecoveryStageSnapshot
     recovery_progress: float
     impact: ImpactSnapshot | None
