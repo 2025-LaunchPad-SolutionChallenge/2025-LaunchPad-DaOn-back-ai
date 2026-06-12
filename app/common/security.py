@@ -9,10 +9,42 @@ from app.config import settings
 
 
 async def verify_firebase_id_token(id_token: str) -> dict:
-    """Firebase Admin SDK로 ID 토큰 검증. 실패 시 Firebase 예외."""
+    """Firebase Admin SDK로 ID 토큰 검증. 실패 시 실제 Firebase 예외 로그 출력."""
+    import os
+    import firebase_admin
     from firebase_admin import auth as firebase_auth
 
-    return await asyncio.to_thread(firebase_auth.verify_id_token, id_token)
+    def _verify() -> dict:
+        try:
+            app = firebase_admin.get_app()
+
+            print("[FIREBASE DEBUG] app name =", app.name)
+            print("[FIREBASE DEBUG] app project_id =", getattr(app, "project_id", None))
+            print(
+                "[FIREBASE DEBUG] FIREBASE_AUTH_EMULATOR_HOST =",
+                os.getenv("FIREBASE_AUTH_EMULATOR_HOST"),
+            )
+            print("[FIREBASE DEBUG] token length =", len(id_token))
+            print("[FIREBASE DEBUG] token dot count =", id_token.count("."))
+
+            decoded = firebase_auth.verify_id_token(
+                id_token,
+                check_revoked=False,
+                clock_skew_seconds=60,
+            )
+
+            print("[FIREBASE DEBUG] verified uid =", decoded.get("uid"))
+            print("[FIREBASE DEBUG] verified aud =", decoded.get("aud"))
+            print("[FIREBASE DEBUG] verified iss =", decoded.get("iss"))
+
+            return decoded
+
+        except Exception as e:
+            print("[FIREBASE VERIFY ERROR]", type(e).__name__)
+            print("[FIREBASE VERIFY ERROR DETAIL]", repr(e))
+            raise
+
+    return await asyncio.to_thread(_verify)
 
 
 async def delete_firebase_user(uid: str) -> None:

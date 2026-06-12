@@ -42,6 +42,7 @@ def _to_list_response(page_data: DisasterListPage) -> DisasterListResponse:
                 status=item.status,
                 occurredAt=item.occurred_at,
                 endedAt=item.ended_at,
+                address=item.address,
                 recoveryStage=RecoveryStageResponse(
                     stageCode=item.recovery_stage.stage_code,
                     stageName=item.recovery_stage.stage_name,

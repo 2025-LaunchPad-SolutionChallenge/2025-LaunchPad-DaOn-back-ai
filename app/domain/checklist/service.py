@@ -447,6 +447,7 @@ class ChecklistService:
                 generation_config={"response_mime_type": "application/json"},
             )
             response = model.generate_content(prompt)
+            print(f"[Gemini OK] tokens_used={getattr(response.usage_metadata, 'total_token_count', 'N/A')}")
             payload = json.loads(response.text)
             titles = [str(item.get("title", "")).strip() for item in payload if isinstance(item, dict)]
             titles = [t for t in titles if t]

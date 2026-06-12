@@ -148,10 +148,7 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
 
         stmt = (
             select(UserDisasterModel)
-            .options(
-                joinedload(UserDisasterModel.disaster_type),
-                joinedload(UserDisasterModel.recovery_stage),
-            )
+            .options(joinedload(UserDisasterModel.disaster_type))
             .where(UserDisasterModel.user_id == user_id)
             .order_by(order_priority, UserDisasterModel.registered_at.desc())
             .offset(page * size)
@@ -160,23 +157,65 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
 
-        items = [
-            DisasterListItem(
-                user_disaster_id=row.user_disaster_id,
-                title=row.title,
-                disaster_type_code=row.disaster_type.disaster_code,
-                disaster_type_name=row.disaster_type.disaster_name,
-                status=row.registration_status.value,
-                occurred_at=row.registered_at,
-                ended_at=row.ended_at,
-                recovery_stage=RecoveryStageSnapshot(
-                    stage_code=row.recovery_stage.stage_code,
-                    stage_name=row.recovery_stage.stage_name,
-                ),
-                recovery_progress=row.recovery_progress,
+        # 페이지 내 재난들의 최신 회복 데이터를 한 번에 조회 (N+1 방지)
+        disaster_ids = [row.user_disaster_id for row in rows]
+        recovery_map: dict[int, tuple[str, float]] = {}
+        if disaster_ids:
+            latest_sq = (
+                select(
+                    RecoveryOutputModel.user_disaster_id,
+                    func.max(RecoveryOutputModel.state_date).label("max_date"),
+                )
+                .where(RecoveryOutputModel.user_disaster_id.in_(disaster_ids))
+                .group_by(RecoveryOutputModel.user_disaster_id)
+                .subquery()
             )
-            for row in rows
-        ]
+            recovery_result = await self._session.execute(
+                select(
+                    RecoveryOutputModel.user_disaster_id,
+                    RecoveryOutputModel.predicted_stage,
+                    RecoveryFeatureModel.avg_7d_task_completion_rate,
+                )
+                .join(
+                    latest_sq,
+                    (RecoveryOutputModel.user_disaster_id == latest_sq.c.user_disaster_id)
+                    & (RecoveryOutputModel.state_date == latest_sq.c.max_date),
+                )
+                .outerjoin(
+                    RecoveryFeatureModel,
+                    (RecoveryFeatureModel.user_disaster_id == RecoveryOutputModel.user_disaster_id)
+                    & (RecoveryFeatureModel.feature_date == RecoveryOutputModel.state_date),
+                )
+            )
+            for ud_id, stage_code, completion_rate in recovery_result.all():
+                base = _STAGE_BASE.get(stage_code)
+                if base is not None and completion_rate is not None:
+                    progress = round(float(base) + (float(completion_rate) * 20), 1)
+                else:
+                    progress = 0.0
+                recovery_map[int(ud_id)] = (stage_code, progress)
+
+        items = []
+        for row in rows:
+            stage_code, progress = recovery_map.get(row.user_disaster_id, ("CHAOS", 0.0))
+            stage_name = _STAGE_INFO.get(stage_code, _STAGE_INFO["CHAOS"])[2]
+            items.append(
+                DisasterListItem(
+                    user_disaster_id=row.user_disaster_id,
+                    title=row.title,
+                    disaster_type_code=row.disaster_type.disaster_code,
+                    disaster_type_name=row.disaster_type.disaster_name,
+                    status=row.registration_status.value,
+                    occurred_at=row.registered_at,
+                    ended_at=row.ended_at,
+                    address=row.address,
+                    recovery_stage=RecoveryStageSnapshot(
+                        stage_code=stage_code,
+                        stage_name=stage_name,
+                    ),
+                    recovery_progress=progress,
+                )
+            )
         return DisasterListPage(
             content=items,
             page=page,
@@ -188,6 +227,38 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         row = await self._get_owned_disaster(user_id=user_id, user_disaster_id=user_disaster_id)
         if row is None:
             return None
+
+        # UserDisasterModel.recovery_stage/recovery_progress는 onboarding 시점 값으로 배치가 갱신하지 않음.
+        # 실제 최신 회복 단계는 RecoveryOutputModel에서 조회한다.
+        latest_result = await self._session.execute(
+            select(
+                RecoveryOutputModel.predicted_stage,
+                RecoveryFeatureModel.avg_7d_task_completion_rate,
+            )
+            .outerjoin(
+                RecoveryFeatureModel,
+                (RecoveryFeatureModel.user_disaster_id == user_disaster_id)
+                & (RecoveryFeatureModel.feature_date == RecoveryOutputModel.state_date),
+            )
+            .where(RecoveryOutputModel.user_disaster_id == user_disaster_id)
+            .order_by(RecoveryOutputModel.state_date.desc())
+            .limit(1)
+        )
+        latest = latest_result.one_or_none()
+
+        if latest is not None:
+            stage_code, completion_rate = latest
+            base = _STAGE_BASE.get(stage_code)
+            if base is not None and completion_rate is not None:
+                recovery_progress = round(float(base) + (float(completion_rate) * 20), 1)
+            else:
+                recovery_progress = 0.0
+            stage_name = _STAGE_INFO.get(stage_code, _STAGE_INFO["CHAOS"])[2]
+        else:
+            stage_code = "CHAOS"
+            stage_name = _STAGE_INFO["CHAOS"][2]
+            recovery_progress = 0.0
+
         return DisasterDetail(
             user_disaster_id=row.user_disaster_id,
             title=row.title,
@@ -203,10 +274,10 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
             longitude=_to_float_or_none(row.longitude),
             address=row.address,
             recovery_stage=RecoveryStageSnapshot(
-                stage_code=row.recovery_stage.stage_code,
-                stage_name=row.recovery_stage.stage_name,
+                stage_code=stage_code,
+                stage_name=stage_name,
             ),
-            recovery_progress=row.recovery_progress,
+            recovery_progress=recovery_progress,
             impact=_to_impact_snapshot(row.impact),
             detail=_to_detail_payload(row),
         )
