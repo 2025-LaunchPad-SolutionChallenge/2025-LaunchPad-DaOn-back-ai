@@ -75,6 +75,9 @@ class DisasterService:
         *,
         user_id: int,
         disaster_type: str,
+        latitude: float | None,
+        longitude: float | None,
+        address: str | None,
         safety_status: str | None,
         residence_status: str,
         injury_level: str,
@@ -95,6 +98,9 @@ class DisasterService:
         return await self._disasters.create_onboarding(
             user_id=user_id,
             disaster_type=disaster_type,
+            latitude=latitude,
+            longitude=longitude,
+            address=address,
             safety_status=safety_status,
             residence_status=residence_status,
             injury_level=injury_level,
@@ -133,7 +139,7 @@ class DisasterService:
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> tuple[float | None, str | None, str | None]:
+    ) -> tuple[float, str, str, str]:
         return await self._disasters.get_latest_recovery_progress(
             user_id=user_id,
             user_disaster_id=user_disaster_id,

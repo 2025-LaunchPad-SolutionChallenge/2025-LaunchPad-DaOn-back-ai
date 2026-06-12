@@ -362,6 +362,9 @@ Prefix: `/api/v1/disasters`
 ```json
 {
   "disasterType": "FLOOD",
+  "latitude": 37.5665,
+  "longitude": 126.978,
+  "address": "서울특별시 중구",
   "safetyStatus": "DAMAGED",
   "residenceStatus": "PARTIAL_DAMAGE",
   "injuryLevel": "MINOR",
@@ -386,6 +389,7 @@ Prefix: `/api/v1/disasters`
 
 - `damages` 배열은 재난 유형별 체크 인덱스를 사용합니다.
 - 홍수/지진/화재는 각각 추가 필수 필드가 있으며 누락 시 `400 MISSING_REQUIRED_FIELD` 입니다.
+- `latitude`, `longitude`, `address`는 optional 입니다. (미입력 시 `null` 저장)
 
 ## `GET /disasters/{userDisasterId}/recovery/stage`
 
@@ -489,6 +493,11 @@ Prefix: `/api/v1/disasters`
   "status": "ACTIVE",
   "occurredAt": "2026-02-24T09:00:00",
   "endedAt": null,
+  "location": {
+    "latitude": 37.5665,
+    "longitude": 126.978,
+    "address": "서울특별시 중구"
+  },
   "recoveryStage": {
     "stageCode": "CHAOS",
     "stageName": "혼란"
@@ -504,6 +513,10 @@ Prefix: `/api/v1/disasters`
   "detail": {}
 }
 ```
+
+노트:
+
+- 위치 3개 값(`latitude`, `longitude`, `address`)이 모두 비어있으면 `location`은 `null`로 반환됩니다.
 
 ## `PATCH /disasters/{userDisasterId}`
 
@@ -586,7 +599,8 @@ Prefix: `/api/v1/checklists`
   "userDisasterId": 10,
   "userCondition": {
     "canGoOut": true,
-    "availableTime": "ONE_TO_THREE_HOURS"
+    "availableTime": "ONE_TO_THREE_HOURS",
+    "specialNotes": "저녁 시간대만 외출 가능"
   }
 }
 ```
@@ -598,6 +612,10 @@ Prefix: `/api/v1/checklists`
   "message": "상황 입력 완료"
 }
 ```
+
+노트:
+
+- `specialNotes`는 optional 자유 입력 필드입니다.
 
 ## `POST /checklists/ai-generate`
 
@@ -684,6 +702,91 @@ AI 체크리스트 3개 생성
 {
   "checklistItemId": 501,
   "message": "체크리스트 항목이 수정되었습니다."
+}
+```
+
+## `POST /disasters/{userDisasterId}/checklist/{checklistItemId}/attachments`
+
+체크리스트 첨부(메모/이미지/파일) 추가
+
+요청 예시 (메모):
+
+```json
+{
+  "attachmentType": "MEMO",
+  "content": "누전차단기 점검 완료, 사진은 저녁에 추가 예정",
+  "fileUrl": null,
+  "originalFileName": null,
+  "mimeType": null,
+  "fileSize": null,
+  "thumbnailUrl": null
+}
+```
+
+요청 예시 (이미지/파일):
+
+```json
+{
+  "attachmentType": "IMAGE",
+  "content": null,
+  "fileUrl": "https://firebasestorage.googleapis.com/...",
+  "originalFileName": "damage_photo_01.jpg",
+  "mimeType": "image/jpeg",
+  "fileSize": 348129,
+  "thumbnailUrl": "https://firebasestorage.googleapis.com/.../thumb.jpg"
+}
+```
+
+응답:
+
+```json
+{
+  "attachmentId": 301,
+  "message": "첨부가 추가되었습니다."
+}
+```
+
+노트:
+
+- `attachmentType`은 `MEMO | IMAGE | FILE` 입니다.
+- 메모는 `content` 중심, 파일형 첨부는 `fileUrl` 및 파일 메타데이터 중심으로 사용합니다.
+
+## `PATCH /disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}`
+
+체크리스트 첨부 부분 수정
+
+요청 예시:
+
+```json
+{
+  "content": "메모 문구 수정",
+  "fileUrl": null,
+  "originalFileName": null,
+  "mimeType": null,
+  "fileSize": null,
+  "thumbnailUrl": null
+}
+```
+
+응답:
+
+```json
+{
+  "attachmentId": 301,
+  "message": "첨부가 수정되었습니다."
+}
+```
+
+## `DELETE /disasters/{userDisasterId}/checklist/{checklistItemId}/attachments/{attachmentId}`
+
+체크리스트 첨부 삭제
+
+응답:
+
+```json
+{
+  "attachmentId": 301,
+  "message": "첨부가 삭제되었습니다."
 }
 ```
 
@@ -798,6 +901,27 @@ AI 체크리스트 3개 생성
   ]
 }
 ```
+
+## `GET /checklists/weekly-progress?date={date}`
+
+기준 날짜(`date`)까지의 최근 7일(기준일 포함) 체크리스트 진행률 조회
+
+응답:
+
+```json
+{
+  "weekStart": "2026-04-10",
+  "weekEnd": "2026-04-19",
+  "completionRate": 65.0
+}
+```
+
+노트:
+
+- 쿼리 파라미터 `date`는 필수이며 형식은 `YYYY-MM-DD`입니다.
+- 집계 구간은 `date - 6일`부터 `date`까지(총 7일)입니다.
+- 집계는 로그인 사용자의 활성 재난(`ACTIVE`) 기준으로 수행됩니다.
+- `completionRate`는 퍼센트 값이며 소수점 1자리 반올림입니다.
 
 ## `GET /disasters/{userDisasterId}/archives?type=ALL&date=...&cursor=...&limit=20`
 
@@ -959,6 +1083,7 @@ Prefix: `/api/v1/home`
 ## 8) 프론트 구현 시 주의사항
 
 - 체크리스트는 `/disasters/{userDisasterId}/checklist*`와 `/checklists/context`, `/checklists/ai-generate`를 함께 사용합니다.
+- 주간 진행률은 `/checklists/weekly-progress?date=YYYY-MM-DD`에서 조회합니다.
 - Home API는 camelCase 응답(`todayTotalTasks`)입니다.
 - `GET /home/summary`는 `userName`, `occurredAt`을 포함합니다.
 - checklist 상세의 `isAiGenerated`는 `item_source_type == "AI_GENERATED"` 기준입니다.
@@ -975,4 +1100,5 @@ Prefix: `/api/v1/home`
 4. `POST /api/v1/disasters/{userDisasterId}/checklist`
 5. `PATCH /api/v1/disasters/{userDisasterId}/checklist/{checklistItemId}/status`
 6. `GET /api/v1/disasters/{userDisasterId}/checklist/{checklistItemId}`
+7. `GET /api/v1/checklists/weekly-progress?date=2026-04-16`
 

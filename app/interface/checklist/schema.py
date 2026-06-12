@@ -127,6 +127,12 @@ class ChecklistListResponse(BaseModel):
     days: list[ChecklistListDayResponse] = Field(..., description="날짜별 집계 목록")
 
 
+class WeeklyProgressResponse(BaseModel):
+    weekStart: str = Field(..., description="주간 시작일(월요일, yyyy-MM-dd)")
+    weekEnd: str = Field(..., description="주간 종료일(일요일, yyyy-MM-dd)")
+    completionRate: float = Field(..., description="주간 체크리스트 달성률(%)")
+
+
 class ArchiveListItemResponse(BaseModel):
     attachmentId: int = Field(..., description="첨부 ID")
     checklistItemId: int = Field(..., description="체크리스트 항목 ID")

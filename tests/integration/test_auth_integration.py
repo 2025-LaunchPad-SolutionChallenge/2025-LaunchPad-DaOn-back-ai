@@ -977,6 +977,19 @@ def test_residence_home_and_remaining_checklist_apis() -> None:
         assert full.status_code == 200, full.text
         assert full.json()["totalCount"] >= 4
 
+        weekly = client.get(
+            "/api/v1/checklists/weekly-progress",
+            headers={"Authorization": f"Bearer {access}"},
+            params={"date": today},
+        )
+        assert weekly.status_code == 200, weekly.text
+        weekly_json = weekly.json()
+        expected_start = (datetime.now().date() - timedelta(days=6)).isoformat()
+        assert weekly_json["weekStart"] == expected_start
+        assert weekly_json["weekEnd"] == today
+        assert isinstance(weekly_json["completionRate"], float)
+        assert 0.0 <= weekly_json["completionRate"] <= 100.0
+
         memo_added = client.post(
             f"/api/v1/disasters/{ids['active']}/checklist/{created_ids[0]}/attachments",
             headers={"Authorization": f"Bearer {access}"},

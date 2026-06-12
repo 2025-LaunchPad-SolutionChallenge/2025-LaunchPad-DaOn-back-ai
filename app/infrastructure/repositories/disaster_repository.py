@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from datetime import date, datetime
 from typing import Any
 
@@ -39,6 +40,22 @@ from app.infrastructure.models.disaster_model import (
 )
 from app.infrastructure.models.recovery_model import RecoveryFeatureModel, RecoveryOutputModel, RecoveryStageMasterModel
 from app.infrastructure.models.user_model import UserSettingModel
+
+_STAGE_INFO: dict[str, tuple[int, str, str, str]] = {
+    "CHAOS":               (1, "CHAOS",               "혼란기",     "상황을 받아들이는 것만으로도 버거운 상태예요."),
+    "STAGNANT":            (2, "STAGNANT",            "정체기",     "익숙해졌지만 나아가기 어려운 상태예요."),
+    "ATTEMPTING":          (3, "ATTEMPTING",          "시도기",     "조심스럽게 다시 움직이기 시작한 상태예요."),
+    "STABLE":              (4, "STABLE",              "안정기",     "일상이 어느 정도 회복되고 있는 상태예요."),
+    "RECOVERY_MAINTAINED": (5, "RECOVERY_MAINTAINED", "회복 유지기", "회복된 일상을 안정적으로 유지하고 있어요."),
+}
+
+_STAGE_BASE: dict[str, float] = {
+    "CHAOS": 0.0,
+    "STAGNANT": 20.0,
+    "ATTEMPTING": 40.0,
+    "STABLE": 60.0,
+    "RECOVERY_MAINTAINED": 80.0,
+}
 
 
 def _to_impact_snapshot(impact: DisasterImpactModel | None) -> ImpactSnapshot | None:
@@ -102,6 +119,12 @@ def _to_detail_payload(row: UserDisasterModel) -> dict[str, Any] | None:
             "waterProblem": d.water_problem,
         }
     return None
+
+
+def _to_float_or_none(value: Decimal | float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)
 
 
 class SqlAlchemyDisasterRepository(DisasterRepository):
@@ -176,6 +199,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
             status=row.registration_status.value,
             occurred_at=row.registered_at,
             ended_at=row.ended_at,
+            latitude=_to_float_or_none(row.latitude),
+            longitude=_to_float_or_none(row.longitude),
+            address=row.address,
             recovery_stage=RecoveryStageSnapshot(
                 stage_code=row.recovery_stage.stage_code,
                 stage_name=row.recovery_stage.stage_name,
@@ -261,6 +287,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         *,
         user_id: int,
         disaster_type: str,
+        latitude: float | None,
+        longitude: float | None,
+        address: str | None,
         safety_status: str | None,
         residence_status: str,
         injury_level: str,
@@ -313,6 +342,9 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
             recovery_stage=stage_row,
             registration_status=RegistrationStatus.ACTIVE,
             recovery_progress=0.0,
+            latitude=latitude,
+            longitude=longitude,
+            address=address,
         )
         self._session.add(user_disaster)
         await self._session.flush()
@@ -444,18 +476,6 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
                 message="해당 disasterId가 존재하지 않습니다.",
                 error_key="DISASTER_NOT_FOUND",
             )
-        stage_map = {
-            "CHAOS": (1, "CHAOS", "혼란기", "상황을 받아들이는 것만으로도 버거운 상태예요."),
-            "STAGNANT": (2, "STAGNANT", "정체기", "조금은 익숙해졌지만, 앞으로 나아가긴 어려운 상태예요."),
-            "ATTEMPTING": (3, "ATTEMPTING", "시도기", "조심스럽게 다시 움직이기 시작한 상태예요."),
-            "STABLE": (4, "STABLE", "안정기", "일상이 어느 정도 회복되고 있는 상태예요."),
-            "RECOVERY_MAINTAINED": (
-                5,
-                "RECOVERY_MAINTAINED",
-                "회복 유지기",
-                "회복된 일상을 안정적으로 유지하고 있어요.",
-            ),
-        }
         output_result = await self._session.execute(
             select(RecoveryOutputModel)
             .where(RecoveryOutputModel.user_disaster_id == user_disaster_id)
@@ -464,7 +484,7 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         )
         output = output_result.scalar_one_or_none()
         code = output.predicted_stage if output is not None else "CHAOS"
-        return stage_map.get(code, stage_map["CHAOS"])
+        return _STAGE_INFO.get(code, _STAGE_INFO["CHAOS"])
 
     async def get_recovery_graph_points(
         self,
@@ -480,20 +500,6 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
                 message="해당 disasterId가 존재하지 않습니다.",
                 error_key="DISASTER_NOT_FOUND",
             )
-        _STAGE_NAME = {
-            "CHAOS": "혼란기",
-            "STAGNANT": "정체기",
-            "ATTEMPTING": "시도기",
-            "STABLE": "안정기",
-            "RECOVERY_MAINTAINED": "회복 유지기",
-        }
-        _STAGE_BASE = {
-            "CHAOS": 0.0,
-            "STAGNANT": 20.0,
-            "ATTEMPTING": 40.0,
-            "STABLE": 60.0,
-            "RECOVERY_MAINTAINED": 80.0,
-        }
         result = await self._session.execute(
             select(
                 RecoveryOutputModel.state_date,
@@ -519,7 +525,7 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
                 score = round(base + (completion_rate * 20), 1)
             else:
                 score = None
-            points.append((state_date, score, stage_code, _STAGE_NAME.get(stage_code, stage_code)))
+            points.append((state_date, score, stage_code, _STAGE_INFO.get(stage_code, _STAGE_INFO["CHAOS"])[2]))
         return points
 
     async def get_latest_recovery_progress(
@@ -527,15 +533,17 @@ class SqlAlchemyDisasterRepository(DisasterRepository):
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> tuple[float | None, str | None, str | None]:
+    ) -> tuple[float, str, str, str]:
+        _default = (0.0, "CHAOS", "혼란기", _STAGE_INFO["CHAOS"][3])
         points = await self.get_recovery_graph_points(
             user_id=user_id,
             user_disaster_id=user_disaster_id,
         )
         if not points:
-            return None, None, None
+            return _default
         _, score, stage_code, stage_name = points[-1]
-        return score, stage_code, stage_name
+        description = _STAGE_INFO.get(stage_code, _STAGE_INFO["CHAOS"])[3]
+        return score if score is not None else 0.0, stage_code, stage_name, description
 
     async def _get_owned_disaster(
         self,

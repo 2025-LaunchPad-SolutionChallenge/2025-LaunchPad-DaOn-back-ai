@@ -46,6 +46,24 @@ class DisasterImpactResponse(BaseModel):
     availableTime: str | None
 
 
+class LocationResponse(BaseModel):
+    latitude: float | None = Field(
+        default=None,
+        description="발생 위치 위도",
+        examples=[37.5665],
+    )
+    longitude: float | None = Field(
+        default=None,
+        description="발생 위치 경도",
+        examples=[126.9780],
+    )
+    address: str | None = Field(
+        default=None,
+        description="발생 위치 주소",
+        examples=["서울특별시 중구"],
+    )
+
+
 class DisasterDetailResponse(BaseModel):
     userDisasterId: int
     title: str | None
@@ -53,6 +71,11 @@ class DisasterDetailResponse(BaseModel):
     status: str
     occurredAt: datetime
     endedAt: datetime | None
+    location: LocationResponse | None = Field(
+        default=None,
+        description="발생 위치 정보(모두 비어 있으면 null)",
+        examples=[{"latitude": 37.5665, "longitude": 126.9780, "address": "서울특별시 중구"}],
+    )
     recoveryStage: RecoveryStageResponse
     recoveryProgress: float
     impact: DisasterImpactResponse | None
@@ -158,6 +181,9 @@ class OnboardingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     disasterType: DisasterTypeEnum = Field(..., description="재난 유형 코드")
+    latitude: float | None = Field(default=None, description="발생 위치 위도")
+    longitude: float | None = Field(default=None, description="발생 위치 경도")
+    address: str | None = Field(default=None, description="발생 위치 주소")
     safetyStatus: SafetyStatusEnum | None = Field(default=None, description="안전 상태")
     residenceStatus: ResidenceStatusEnum = Field(..., description="거주지 상태")
     injuryLevel: InjuryLevelEnum = Field(..., description="부상 정도")
@@ -197,6 +223,7 @@ class RecoveryGraphResponse(BaseModel):
 
 class RecoveryProgressResponse(BaseModel):
     userDisasterId: int = Field(..., description="대상 재난 ID")
-    recoveryScore: float | None = Field(default=None, description="현재 회복 점수 (0.0~100.0), 데이터 없으면 null")
-    stageCode: str | None = Field(default=None, description="현재 단계 코드")
-    stageName: str | None = Field(default=None, description="현재 단계 이름")
+    recoveryScore: float = Field(..., description="현재 회복 점수 (0.0~100.0)")
+    stageCode: str = Field(..., description="현재 단계 코드")
+    stageName: str = Field(..., description="현재 단계 이름")
+    stageDescription: str = Field(..., description="현재 단계 설명")

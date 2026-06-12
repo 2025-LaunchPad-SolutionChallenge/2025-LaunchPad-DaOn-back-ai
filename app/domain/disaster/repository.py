@@ -41,6 +41,9 @@ class DisasterRepository(ABC):
         *,
         user_id: int,
         disaster_type: str,
+        latitude: float | None,
+        longitude: float | None,
+        address: str | None,
         safety_status: str | None,
         residence_status: str,
         injury_level: str,
@@ -74,4 +77,4 @@ class DisasterRepository(ABC):
         *,
         user_id: int,
         user_disaster_id: int,
-    ) -> tuple[float | None, str | None, str | None]: ...
+    ) -> tuple[float, str, str, str]: ...

@@ -138,3 +138,15 @@ class ChecklistRepository(ABC):
         can_go_out: bool,
         available_time: str,
     ) -> None: ...
+
+    @abstractmethod
+    async def get_weekly_completion_stats(
+        self,
+        *,
+        user_disaster_id: int,
+        week_start_date: date,
+        week_end_date: date,
+    ) -> tuple[int, int]: ...
+
+    @abstractmethod
+    async def get_active_user_disaster_id(self, user_id: int) -> int | None: ...
