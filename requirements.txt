@@ -14,7 +14,7 @@ boto3==1.38.9
 httpx==0.28.1
 apscheduler==3.10.4
 python-dateutil==2.9.0
-google-genai
+google-generativeai
 pytest==8.3.5
 pytest-asyncio==0.26.0
 greenlet==3.2.2
