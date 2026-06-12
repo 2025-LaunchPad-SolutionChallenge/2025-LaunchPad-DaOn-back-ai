@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # ── Firebase ──────────────────────────────────────────────────────────
-    FIREBASE_CREDENTIALS_PATH: str
+    FIREBASE_CREDENTIALS_PATH: str = ""
+    FIREBASE_CREDENTIALS_JSON: str = ""
     FIREBASE_STORAGE_BUCKET: str = ""
 
     # ── Gemini ────────────────────────────────────────────────────────────
